@@ -33,3 +33,7 @@ next-env.d.ts
 # backups (database exports can contain user data)
 backups/
 *.bson
+.agents/
+skills-lock.json
+PLAN.md
+AGENTS.md
