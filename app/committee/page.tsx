@@ -27,7 +27,7 @@ export default function CommitteePage() {
   return (
     <>
       {/* Page header */}
-      <section className="bg-leo-purple text-white">
+      <section className="bg-leo-blue text-white">
         <div className="mx-auto max-w-6xl px-4 py-12 md:py-16">
           <h1 className="text-3xl font-bold md:text-4xl">Committee</h1>
           <p className="mt-2 max-w-2xl text-white/90">
@@ -40,7 +40,7 @@ export default function CommitteePage() {
       {/* Present committee */}
       <section className="bg-white py-12 md:py-16">
         <div className="mx-auto max-w-6xl px-4">
-          <h2 className="text-2xl font-bold text-leo-purple md:text-3xl">
+          <h2 className="text-2xl font-bold text-leo-blue md:text-3xl">
             Present committee
           </h2>
           <p className="mt-2 text-sm text-gray-600">
@@ -53,10 +53,10 @@ export default function CommitteePage() {
                 className="rounded-md border border-gray-200 p-6 text-center"
               >
                 {/* Member photo placeholder (circle) */}
-                <div className="mx-auto flex h-24 w-24 items-center justify-center rounded-full bg-leo-gold/20">
-                  <span className="text-sm text-leo-purple/70">Photo</span>
+                <div className="mx-auto flex h-24 w-24 items-center justify-center rounded-full bg-leo-yellow/20">
+                  <span className="text-sm text-leo-blue/70">Photo</span>
                 </div>
-                <h3 className="mt-4 font-bold text-leo-purple">
+                <h3 className="mt-4 font-bold text-leo-blue">
                   {member.name}
                 </h3>
                 <p className="mt-1 text-sm text-gray-700">{member.post}</p>
@@ -67,9 +67,9 @@ export default function CommitteePage() {
       </section>
 
       {/* Past committees */}
-      <section className="bg-leo-gold/10 py-12 md:py-16">
+      <section className="bg-leo-yellow/10 py-12 md:py-16">
         <div className="mx-auto max-w-6xl px-4">
-          <h2 className="text-2xl font-bold text-leo-purple md:text-3xl">
+          <h2 className="text-2xl font-bold text-leo-blue md:text-3xl">
             Past committees
           </h2>
           <p className="mt-2 text-sm text-gray-600">
@@ -82,13 +82,13 @@ export default function CommitteePage() {
                 className="overflow-hidden rounded-md border border-gray-200 bg-white"
               >
                 {/* Team photo placeholder */}
-                <div className="flex aspect-video items-center justify-center bg-leo-gold/20">
-                  <span className="text-sm text-leo-purple/70">
-                    Team Photo — {year}
+                <div className="flex aspect-video items-center justify-center bg-leo-yellow/20">
+                  <span className="text-sm text-leo-blue/70">
+                    Team Photo \u2014 {year}
                   </span>
                 </div>
                 <div className="p-5">
-                  <h3 className="font-bold text-leo-purple">
+                  <h3 className="font-bold text-leo-blue">
                     Leo Year {year}
                   </h3>
                 </div>

@@ -10,9 +10,11 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        // Official Leo Club colors
-        "leo-purple": "#551A8B",
-        "leo-gold": "#FDB813",
+        // Official Lions International Leo Brand Colors
+        "leo-yellow": "#EBB700",
+        "leo-blue": "#407CCA",
+        "leo-green": "#00AB68",
+        "leo-gray": "#55565A",
       },
     },
   },
