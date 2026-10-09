@@ -22,6 +22,8 @@ Thumbs.db
 # editor settings
 .vscode/
 .idea/
+.kilo/
+.kilocode/
 
 # Vercel
 .vercel/
