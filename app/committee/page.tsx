@@ -21,7 +21,9 @@ const committeeMembers = [
   { name: "Leo Rohit Rai", post: "Content Creator" },
 ];
 
-function MemberCard({ name, post }: { name: string; post: string }) {
+function MemberCard({ name, post, size = "md" }: { name: string; post: string; size?: "lg" | "md" }) {
+  const dims = size === "lg" ? "h-36 w-36 text-5xl" : "h-32 w-32 text-4xl";
+  const ring = size === "lg" ? "ring-4" : "ring-3";
   return (
     <Link
       href="#"
@@ -30,8 +32,8 @@ function MemberCard({ name, post }: { name: string; post: string }) {
       {/* Profile image with leo-yellow ring */}
       <div className="relative mb-4">
         <div className="absolute -inset-1 bg-leo-yellow/20 rounded-full" />
-        <div className="relative h-28 w-28 rounded-full bg-leo-gray/10 flex items-center justify-center overflow-hidden ring-4 ring-leo-yellow/30">
-          <span className="text-4xl font-medium text-leo-gray/40">
+        <div className={`relative ${dims} rounded-full bg-leo-gray/10 flex items-center justify-center overflow-hidden ${ring} ring-leo-yellow/30`}>
+          <span className="font-medium text-leo-gray/40">
             {name.split(" ").map((n) => n[0]).join("")}
           </span>
         </div>
@@ -66,7 +68,7 @@ export default function CommitteePage() {
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-6">
             {executiveBoard.map((member) => (
-              <MemberCard key={member.name} name={member.name} post={member.post} />
+              <MemberCard key={member.name} name={member.name} post={member.post} size="lg" />
             ))}
           </div>
         </div>
@@ -81,7 +83,7 @@ export default function CommitteePage() {
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
             {committeeMembers.map((member) => (
-              <MemberCard key={member.name} name={member.name} post={member.post} />
+              <MemberCard key={member.name} name={member.name} post={member.post} size="md" />
             ))}
           </div>
         </div>

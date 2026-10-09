@@ -20,26 +20,6 @@ export default function HomePage() {
             <span className="text-leo-yellow">·</span> Opportunity{" "}
             <span className="text-leo-yellow">·</span> Service
           </p>
-          <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
-            <Link
-              href="/our-work"
-              className="rounded-md bg-leo-blue px-6 py-3 font-semibold text-white transition-colors hover:bg-leo-blue/90"
-            >
-              Our Work
-            </Link>
-            <Link
-              href="/literature"
-              className="rounded-md border-2 border-white px-6 py-3 font-semibold text-white transition-colors hover:bg-leo-green/20"
-            >
-              Read Literature
-            </Link>
-            <Link
-              href="/sign-in"
-              className="rounded-md border-2 border-white px-6 py-3 font-semibold text-white transition-colors hover:bg-leo-green/20"
-            >
-              Write
-            </Link>
-          </div>
         </div>
       </section>
 
