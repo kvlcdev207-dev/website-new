@@ -2,7 +2,6 @@
 import type { Config } from "tailwindcss";
 
 const config: Config = {
-  // Files Tailwind should scan for class names
   content: [
     "./app/**/*.{js,ts,jsx,tsx,mdx}",
     "./components/**/*.{js,ts,jsx,tsx,mdx}",
@@ -10,9 +9,10 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        // Official Leo Club colors
-        "leo-purple": "#551A8B",
-        "leo-gold": "#FDB813",
+        "leo-blue": "#407CCA",
+        "leo-yellow": "#EBB700",
+        "leo-green": "#00AB68",
+        "leo-gray": "#55565A",
       },
     },
   },
