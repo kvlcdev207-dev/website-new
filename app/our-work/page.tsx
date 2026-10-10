@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import { AnimatePresence, MotionConfig, motion, type Variants } from "framer-motion";
 import FadeIn from "@/components/FadeIn";
@@ -394,8 +394,7 @@ export default function OurWorkPage() {
 
   // Resolve "today" on the client only — avoids hydration mismatches and
   // stale dates from module-level evaluation.
-  const [todayISO, setTodayISO] = useState<string | null>(null);
-  useEffect(() => setTodayISO(toLocalISO(new Date())), []);
+  const [todayISO] = useState<string>(() => toLocalISO(new Date()));
 
   const items = useMemo(() => (todayISO ? buildTimeline(todayISO) : []), [todayISO]);
   const rows = useMemo(() => chunk(items, ROW_SIZE), [items]);
@@ -409,7 +408,7 @@ export default function OurWorkPage() {
           <div className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8 lg:py-20">
             <h1 className="text-3xl font-bold md:text-4xl lg:text-5xl">Our Work</h1>
             <p className="mt-4 max-w-2xl text-lg text-white/90">
-              The club's recent events and work over the years.
+              The club&apos;s recent events and work over the years.
             </p>
           </div>
         </section>
@@ -420,7 +419,7 @@ export default function OurWorkPage() {
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <FadeIn>
             <div className="mb-16 text-center">
-              <h2 className="text-3xl font-bold text-leo-blue md:text-4xl">This Year's Timeline</h2>
+              <h2 className="text-3xl font-bold text-leo-blue md:text-4xl">This Year&apos;s Timeline</h2>
               <p className="mx-auto mt-4 max-w-2xl text-leo-gray">
                 Hover over or focus any dot to reveal event details.
               </p>
