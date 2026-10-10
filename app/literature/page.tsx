@@ -1,11 +1,11 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { AnimatePresence, MotionConfig, motion } from "framer-motion";
 import FadeIn from "@/components/FadeIn";
 import TopLiteratureSlider from "@/components/TopLiteratureSlider";
-import { writings, categoryColors, categoryLabels, type Category } from "@/data/literature";
+import { categoryColors, categoryLabels, type Category } from "@/data/literature";
 
 const EASE = [0.22, 1, 0.36, 1] as const;
 const filters: Category[] = ["all", "poetry", "stories", "blogs"];
@@ -17,19 +17,53 @@ const initials = (name: string) =>
     .join("")
     .slice(0, 2);
 
+// Shape of a writing document stored in the database
+type DbWriting = {
+  _id: string;
+  category: "poetry" | "stories" | "blogs";
+  title: string;
+  author: string;
+  excerpt: string;
+  date: string;
+  likes?: number;
+  comments?: unknown[];
+};
+
 export default function LiteraturePage() {
   const [activeCategory, setActiveCategory] = useState<Category>("all");
+  const [allWritings, setAllWritings] = useState<DbWriting[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  // Fetch all writings from the database on mount
+  useEffect(() => {
+    async function fetchWritings() {
+      try {
+        const res = await fetch("/api/literature");
+        if (res.ok) {
+          const data = await res.json();
+          setAllWritings(Array.isArray(data) ? data : []);
+        } else {
+          console.error("Failed to fetch literature");
+        }
+      } catch (error) {
+        console.error("Failed to fetch literature:", error);
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchWritings();
+  }, []);
 
   const filteredWritings = useMemo(
-    () => (activeCategory === "all" ? writings : writings.filter((w) => w.category === activeCategory)),
-    [activeCategory]
+    () => (activeCategory === "all" ? allWritings : allWritings.filter((w) => w.category === activeCategory)),
+    [activeCategory, allWritings]
   );
 
   const counts = useMemo(() => {
-    const map: Record<string, number> = { all: writings.length };
-    for (const w of writings) map[w.category] = (map[w.category] ?? 0) + 1;
+    const map: Record<string, number> = { all: allWritings.length };
+    for (const w of allWritings) map[w.category] = (map[w.category] ?? 0) + 1;
     return map;
-  }, []);
+  }, [allWritings]);
 
   return (
     <MotionConfig reducedMotion="user">
@@ -110,11 +144,15 @@ export default function LiteraturePage() {
       {/* Writings grid */}
       <section className="bg-white py-12 sm:py-16">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+          {loading ? (
+            <p className="py-16 text-center text-leo-gray">Loading writings…</p>
+          ) : (
+          <>
           <ul className="relative grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
             <AnimatePresence mode="popLayout">
               {filteredWritings.map((writing, i) => (
                 <motion.li
-                  key={writing.id}
+                  key={writing._id}
                   layout
                   initial={{ opacity: 0, y: 24, scale: 0.97 }}
                   animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -122,7 +160,7 @@ export default function LiteraturePage() {
                   transition={{ duration: 0.4, ease: EASE, delay: Math.min(i, 6) * 0.04 }}
                 >
                   <Link
-                    href={`/literature/${writing.id}`}
+                    href={`/literature/${writing._id}`}
                     className="group flex h-full flex-col rounded-2xl border border-leo-gray/10 bg-white p-6 shadow-sm transition-all duration-300 hover:-translate-y-1.5 hover:border-leo-blue/20 hover:shadow-xl hover:shadow-leo-blue/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-leo-blue/40"
                   >
                     <div className="mb-4 flex items-center justify-between">
@@ -186,6 +224,8 @@ export default function LiteraturePage() {
               </motion.div>
             )}
           </AnimatePresence>
+          </>
+          )}
 
           <div className="mt-10 text-center">
             <Link

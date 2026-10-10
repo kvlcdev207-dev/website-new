@@ -3,8 +3,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
+import { useSession } from "next-auth/react";
 import { AnimatePresence, MotionConfig, motion } from "framer-motion";
-import { writings, getWritingById, categoryLabels, categoryColors } from "@/data/literature";
 import FadeIn from "@/components/FadeIn";
 
 const EASE = [0.22, 1, 0.36, 1] as const;
@@ -32,44 +32,121 @@ const BackArrow = ({ className = "h-5 w-5" }: { className?: string }) => (
   </svg>
 );
 
+interface Writing {
+  _id: string;
+  id: string;
+  category: "poetry" | "stories" | "blogs";
+  title: string;
+  author: string;
+  excerpt: string;
+  date: string;
+  fullContent: string;
+  likes: number;
+  likedBy?: string[];
+  comments: Comment[];
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+interface Comment {
+  id: string;
+  text: string;
+  author: string;
+  date: string;
+  timestamp?: string;
+}
+
+const categoryLabels: Record<string, string> = {
+  poetry: "Poetry",
+  stories: "Short Stories",
+  blogs: "Blogs & Essays",
+};
+
+const categoryColors = {
+  poetry: "bg-leo-blue/10 text-leo-blue",
+  stories: "bg-leo-green/10 text-leo-green",
+  blogs: "bg-leo-yellow/10 text-leo-yellow",
+};
+
+
+
+
 export default function LiteratureDetailPage() {
   const params = useParams();
   const id = params.id as string;
-  const writing = getWritingById(id);
-
-  const baseLikes = writing?.likes ?? 0;
-  const [liked, setLiked] = useState(false);
+  const { data: session } = useSession();
+  const [writing, setWriting] = useState<Writing | null>(null);
+  const [loading, setLoading] = useState(true);
   const [burst, setBurst] = useState(0);
-  const likes = baseLikes + (liked ? 1 : 0);
-
-  const [comments, setComments] = useState(() => writing?.comments ?? []);
+  const [comments, setComments] = useState<Comment[]>([]);
   const [newComment, setNewComment] = useState("");
-  const [commentAuthor, setCommentAuthor] = useState("");
   const [showToast, setShowToast] = useState(false);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  useEffect(() => () => {
-    if (toastTimer.current) clearTimeout(toastTimer.current);
+  useEffect(() => {
+    return () => {
+      if (toastTimer.current) clearTimeout(toastTimer.current);
+    };
   }, []);
+
+  // Fetch literature on mount
+  useEffect(() => {
+    async function fetchWriting() {
+      try {
+        const res = await fetch(`/api/literature/${id}`);
+        if (res.ok) {
+          const data = await res.json();
+          setWriting(data);
+          setComments(data.comments || []);
+        } else {
+          console.error("Failed to fetch literature");
+        }
+      } catch (error) {
+        console.error("Failed to fetch literature:", error);
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchWriting();
+  }, [id]);
 
   const readingMinutes = useMemo(() => {
     if (!writing) return 1;
-    const words = writing.fullContent.trim().split(/\s+/).length;
+    const words = writing.fullContent?.trim().split(/\s+/).length || 0;
     return Math.max(1, Math.round(words / 200));
   }, [writing]);
 
-  // Next two writings (wrapping around), excluding the current one
-  const related = useMemo(() => {
-    if (!writing) return [];
-    const i = writings.findIndex((w) => w.id === writing.id);
-    if (i === -1) return [];
-    const picked = [1, 2].map((o) => writings[(i + o) % writings.length]).filter((w) => w.id !== writing.id);
-    return picked.filter((w, idx) => picked.findIndex((x) => x.id === w.id) === idx);
-  }, [writing]);
-
-  const handleLike = () => {
-    if (!liked) setBurst((b) => b + 1);
-    setLiked((l) => !l);
+  const handleLike = async () => {
+    if (!session) {
+      alert("Please sign in to like");
+      return;
+    }
+    const userEmail = session.user.email;
+    const alreadyLiked = Boolean(userEmail && writing?.likedBy?.includes(userEmail));
+    if (!alreadyLiked) setBurst((b) => b + 1);
+    try {
+      const res = await fetch(`/api/literature/${id}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "like", email: userEmail }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setWriting((prev) =>
+          prev
+            ? {
+                ...prev,
+                likes: data.likes ?? prev.likes,
+                likedBy: data.likedBy ?? prev.likedBy,
+              }
+            : prev
+        );
+      } else {
+        console.error("Failed to like");
+      }
+    } catch (error) {
+      console.error("Failed to like:", error);
+    }
   };
 
   const handleShare = async () => {
@@ -83,24 +160,38 @@ export default function LiteratureDetailPage() {
     }
   };
 
-  const handleCommentSubmit = (e: React.FormEvent) => {
+  const handleCommentSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newComment.trim() || !commentAuthor.trim()) return;
+    if (!session || !newComment.trim()) return;
 
-    setComments((prev) => [
-      {
-        id: `c${Date.now()}`,
-        author: commentAuthor.trim(),
-        text: newComment.trim(),
-        timestamp: new Date().toISOString(),
-      },
-      ...prev,
-    ]);
-    setNewComment("");
-    setCommentAuthor("");
+    try {
+      const res = await fetch(`/api/literature/${id}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "comment",
+          data: { text: newComment.trim(), author: session.user.name || "Anonymous" },
+        }),
+      });
+
+      const data = await res.json();
+
+      if (res.ok && data.comment) {
+        setComments((prev) => [data.comment, ...prev]);
+        setNewComment("");
+      } else {
+        alert("Failed to post comment");
+      }
+    } catch (error) {
+      console.error("Failed to post comment:", error);
+      alert("Failed to post comment");
+    }
   };
 
-  /* ------------------------------ Not found ------------------------------ */
+  useEffect(() => () => {
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+  }, []);
+
   if (!writing) {
     return (
       <MotionConfig reducedMotion="user">
@@ -126,6 +217,10 @@ export default function LiteratureDetailPage() {
   }
 
   const isPoetry = writing.category === "poetry";
+
+  // The signed-in user has liked this piece if their email is in likedBy
+  const userEmail = session?.user?.email;
+  const isLiked = Boolean(userEmail && writing.likedBy?.includes(userEmail));
 
   return (
     <MotionConfig reducedMotion="user">
@@ -191,16 +286,12 @@ export default function LiteratureDetailPage() {
               type="button"
               onClick={handleLike}
               whileTap={{ scale: 0.93 }}
-              aria-label={liked ? "Unlike" : "Like"}
-              aria-pressed={liked}
-              className={`relative inline-flex items-center gap-2 rounded-lg px-5 py-2.5 transition-colors duration-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-leo-red/50 ${
-                liked
-                  ? "bg-leo-red text-white shadow-lg shadow-leo-red/30"
-                  : "bg-leo-gray/10 text-leo-gray hover:bg-leo-red/10 hover:text-leo-red"
-              }`}
+              aria-label={isLiked ? "Unlike" : "Like"}
+              aria-pressed={isLiked}
+              className="relative inline-flex items-center gap-2 rounded-lg bg-leo-gray/10 px-5 py-2.5 transition-colors duration-300 hover:bg-red-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500/50"
             >
               <AnimatePresence>
-                {burst > 0 && liked && (
+                {burst > 0 && isLiked && (
                   <motion.span
                     key={burst}
                     aria-hidden
@@ -208,19 +299,21 @@ export default function LiteratureDetailPage() {
                     animate={{ opacity: 0, scale: 1.7 }}
                     exit={{ opacity: 0 }}
                     transition={{ duration: 0.6, ease: "easeOut" }}
-                    className="pointer-events-none absolute inset-0 rounded-lg bg-leo-red"
+                    className="pointer-events-none absolute inset-0 rounded-lg bg-red-500"
                   />
                 )}
               </AnimatePresence>
 
               <motion.svg
-                key={String(liked)}
-                initial={liked ? { scale: 0.4 } : false}
+                key={String(isLiked)}
+                initial={isLiked ? { scale: 0.4 } : false}
                 animate={{ scale: 1 }}
                 transition={{ type: "spring", stiffness: 500, damping: 12 }}
-                className="relative h-5 w-5"
+                className={`relative h-5 w-5 ${
+                  isLiked ? "fill-current text-red-500" : "text-gray-400"
+                }`}
                 viewBox="0 0 24 24"
-                fill={liked ? "currentColor" : "none"}
+                fill={isLiked ? "currentColor" : "none"}
                 stroke="currentColor"
                 strokeWidth={2}
                 strokeLinecap="round"
@@ -233,14 +326,14 @@ export default function LiteratureDetailPage() {
               <span className="relative inline-flex overflow-hidden tabular-nums">
                 <AnimatePresence mode="popLayout" initial={false}>
                   <motion.span
-                    key={likes}
-                    initial={{ y: liked ? 14 : -14, opacity: 0 }}
+                    key={writing.likes}
+                    initial={{ y: isLiked ? 14 : -14, opacity: 0 }}
                     animate={{ y: 0, opacity: 1 }}
-                    exit={{ y: liked ? -14 : 14, opacity: 0 }}
+                    exit={{ y: isLiked ? -14 : 14, opacity: 0 }}
                     transition={{ duration: 0.2 }}
                     className="font-semibold"
                   >
-                    {likes}
+                    {writing.likes}
                   </motion.span>
                 </AnimatePresence>
               </span>
@@ -256,9 +349,9 @@ export default function LiteratureDetailPage() {
             >
               <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                 <circle cx="18" cy="5" r="3" />
-                <circle cx="6" cy="12" r="3" />
+                <circle cx="6" cy="19" r="3" />
                 <circle cx="18" cy="19" r="3" />
-                <path d="m8.6 13.5 6.8 4M15.4 6.5l-6.8 4" />
+                <path d="M8.59 13.51 15.49 6.49M15.49 6.49 18.5 9.5M18.5 9.5 15.5 12.5M8.5 13.51 11.5 10.5M11.5 10.5 8.5 13.51" />
               </svg>
               <span className="font-semibold">Share</span>
             </motion.button>
@@ -300,55 +393,50 @@ export default function LiteratureDetailPage() {
             <span className="rounded-full bg-leo-blue/10 px-2.5 py-0.5 text-sm tabular-nums">{comments.length}</span>
           </motion.h2>
 
-          <motion.form
-            onSubmit={handleCommentSubmit}
-            initial={{ opacity: 0, y: 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-            transition={{ duration: 0.5, ease: EASE }}
-            className="mb-10 rounded-2xl border border-leo-gray/10 bg-white p-6 shadow-sm"
-          >
-            <h3 className="mb-4 font-bold text-leo-blue">Leave a comment</h3>
-            <div className="space-y-4">
-              <div>
-                <label htmlFor="commentAuthor" className="mb-1 block text-sm font-medium text-leo-gray">
-                  Name
-                </label>
-                <input
-                  id="commentAuthor"
-                  type="text"
-                  required
-                  value={commentAuthor}
-                  onChange={(e) => setCommentAuthor(e.target.value)}
-                  className="block w-full rounded-lg border border-leo-gray/30 bg-white px-4 py-2.5 text-leo-gray transition-colors placeholder:text-leo-gray/40 focus:border-leo-blue focus:outline-none focus:ring-2 focus:ring-leo-blue/20"
-                  placeholder="Your name"
-                />
-              </div>
-              <div>
-                <label htmlFor="commentText" className="mb-1 block text-sm font-medium text-leo-gray">
-                  Comment
-                </label>
-                <textarea
-                  id="commentText"
-                  rows={4}
-                  required
-                  value={newComment}
-                  onChange={(e) => setNewComment(e.target.value)}
-                  className="block w-full resize-y rounded-lg border border-leo-gray/30 bg-white px-4 py-2.5 text-leo-gray transition-colors placeholder:text-leo-gray/40 focus:border-leo-blue focus:outline-none focus:ring-2 focus:ring-leo-blue/20"
-                  placeholder="Write your thoughts..."
-                />
-              </div>
-            </div>
-            <motion.button
-              type="submit"
-              disabled={!newComment.trim() || !commentAuthor.trim()}
-              whileHover={{ scale: 1.03 }}
-              whileTap={{ scale: 0.97 }}
-              className="mt-5 rounded-lg bg-leo-blue px-6 py-2.5 text-sm font-semibold text-white transition-all duration-300 hover:shadow-lg hover:shadow-leo-blue/30 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:shadow-none"
+          {session ? (
+            <motion.form
+              onSubmit={handleCommentSubmit}
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              transition={{ duration: 0.5, ease: EASE }}
+              className="mb-10 rounded-2xl border border-leo-gray/10 bg-white p-6 shadow-sm"
             >
-              Post Comment
-            </motion.button>
-          </motion.form>
+              <h3 className="mb-4 font-bold text-leo-blue">Leave a comment</h3>
+              <p className="mb-4 text-sm text-leo-gray">
+                Posting as {session.user.name}
+              </p>
+              <div className="space-y-4">
+                <div>
+                  <label htmlFor="commentText" className="mb-1 block text-sm font-medium text-leo-gray">
+                    Comment
+                  </label>
+                  <textarea
+                    id="commentText"
+                    rows={4}
+                    required
+                    value={newComment}
+                    onChange={(e) => setNewComment(e.target.value)}
+                    className="block w-full resize-y rounded-lg border border-leo-gray/30 bg-white px-4 py-2.5 text-leo-gray transition-colors placeholder:text-leo-gray/40 focus:border-leo-blue focus:outline-none focus:ring-2 focus:ring-leo-blue/20"
+                    placeholder="Write your thoughts..."
+                  />
+                </div>
+              </div>
+              <motion.button
+                type="submit"
+                disabled={!newComment.trim()}
+                whileHover={{ scale: 1.03 }}
+                whileTap={{ scale: 0.97 }}
+                className="mt-5 rounded-lg bg-leo-blue px-6 py-2.5 text-sm font-semibold text-white transition-all duration-300 hover:shadow-lg hover:shadow-leo-blue/30 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:shadow-none"
+              >
+                Post Comment
+              </motion.button>
+            </motion.form>
+          ) : (
+            <p className="mb-10 rounded-2xl border border-leo-gray/10 bg-white p-6 text-sm text-leo-gray">
+              Please sign in to leave a comment.
+            </p>
+          )}
 
           <ul className="space-y-4">
             <AnimatePresence initial={false}>
@@ -369,7 +457,7 @@ export default function LiteratureDetailPage() {
                     <div className="min-w-0 flex-1">
                       <div className="mb-1 flex flex-wrap items-baseline gap-x-2">
                         <p className="font-medium text-leo-gray">{comment.author}</p>
-                        <p className="text-xs text-leo-gray/50">{formatTimestamp(comment.timestamp)}</p>
+                        <p className="text-xs text-leo-gray/50">{formatTimestamp(comment.timestamp || comment.date)}</p>
                       </div>
                       <p className="break-words text-leo-gray/90">{comment.text}</p>
                     </div>
@@ -388,49 +476,8 @@ export default function LiteratureDetailPage() {
       {/* Keep reading */}
       <section className="bg-white py-14 sm:py-16">
         <div className="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8">
-          {related.length > 0 && (
-            <>
-              <h2 className="mb-6 text-xl font-bold text-leo-blue">Keep reading</h2>
-              <div className="grid gap-5 sm:grid-cols-2">
-                {related.map((w, i) => (
-                  <motion.div
-                    key={w.id}
-                    initial={{ opacity: 0, y: 24 }}
-                    whileInView={{ opacity: 1, y: 0 }}
-                    viewport={{ once: true }}
-                    transition={{ duration: 0.5, ease: EASE, delay: i * 0.1 }}
-                  >
-                    <Link
-                      href={`/literature/${w.id}`}
-                      className="group flex h-full flex-col rounded-2xl border border-leo-gray/10 bg-white p-5 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-leo-blue/20 hover:shadow-xl hover:shadow-leo-blue/10"
-                    >
-                      <span className={`mb-3 inline-block w-fit rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wider ${categoryColors[w.category]}`}>
-                        {categoryLabels[w.category]}
-                      </span>
-                      <h3 className="line-clamp-2 font-bold text-leo-blue">{w.title}</h3>
-                      <p className="mt-2 flex-1 line-clamp-2 text-sm text-leo-gray/70">{w.excerpt}</p>
-                      <p className="mt-4 flex items-center justify-between text-sm text-leo-gray/70">
-                        {w.author}
-                        <svg className="h-4 w-4 text-leo-blue transition-transform duration-300 group-hover:translate-x-1" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                          <path d="M5 12h14M13 6l6 6-6 6" />
-                        </svg>
-                      </p>
-                    </Link>
-                  </motion.div>
-                ))}
-              </div>
-            </>
-          )}
-
-          <div className="mt-12 text-center">
-            <Link
-              href="/literature"
-              className="group inline-flex items-center gap-2 text-sm font-semibold text-leo-blue transition-colors hover:text-leo-blue/80"
-            >
-              <BackArrow className="h-4 w-4 transition-transform duration-300 group-hover:-translate-x-1" />
-              Back to All Writings
-            </Link>
-          </div>
+          <h2 className="mb-6 text-xl font-bold text-leo-blue">Keep reading</h2>
+          <p className="text-center text-leo-gray">More literature coming soon...</p>
         </div>
       </section>
     </MotionConfig>

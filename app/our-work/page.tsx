@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { AnimatePresence, MotionConfig, motion, type Variants } from "framer-motion";
 import FadeIn from "@/components/FadeIn";
@@ -11,39 +11,28 @@ import FadeIn from "@/components/FadeIn";
 
 type Status = "past" | "today" | "upcoming";
 
-type EventData = {
+type ApiEvent = {
   id: string;
-  iso: string; // YYYY-MM-DD — status is derived from this, never hard-coded
+  _id?: string;
+  title: string;
+  date: string;
+  location: string;
+  description: string;
+  type: string;
+  status: string;
+};
+
+type TimelineItem = {
+  id: string;
+  iso: string;
   title: string;
   location: string;
   description: string;
-};
-
-type TimelineItem = EventData & {
-  kind: "event" | "marker"; // "marker" = the synthetic "Today" dot
+  kind: "event" | "marker";
   status: Status;
+  date?: string;
+  type?: string;
 };
-
-// Keep sorted by date.
-const EVENTS: EventData[] = [
-  { id: "1", iso: "2026-09-14", title: "Club Inauguration", location: "College Hall", description: "Official launch of the 2026/27 Leo year." },
-  { id: "2", iso: "2026-09-21", title: "Member Orientation", location: "Auditorium", description: "Welcoming new members." },
-  { id: "3", iso: "2026-09-28", title: "Teachers' Day Program", location: "College Auditorium", description: "A student-run celebration." },
-  { id: "4", iso: "2026-10-02", title: "Campus Clean-Up Drive", location: "College Campus", description: "Cleaned campus and planted flowers." },
-  { id: "6", iso: "2026-10-18", title: "Blood Donation Camp", location: "Red Cross Center", description: "Community blood drive." },
-  { id: "7", iso: "2026-10-24", title: "Book Donation Drive", location: "Campus Library", description: "Donating books to schools." },
-  { id: "8", iso: "2026-11-05", title: "Tree Plantation Day", location: "College Grounds", description: "Planting 200 saplings." },
-  { id: "9", iso: "2026-11-15", title: "Health Check-Up Camp", location: "Community Center", description: "Free health checks." },
-  { id: "10", iso: "2026-12-01", title: "Winter Warmth Drive", location: "Boudhanath", description: "Distributing warm clothes." },
-  { id: "11", iso: "2026-12-12", title: "Year-End Gala", location: "Hotel Ballroom", description: "Celebrating a successful year." },
-];
-
-// past = green, today = yellow, upcoming = blue
-const STATUS = {
-  past: { dot: "bg-leo-green", glow: "shadow-leo-green/60", text: "text-leo-green", label: "Completed", ring: "ring-leo-green/30" },
-  today: { dot: "bg-leo-yellow", glow: "shadow-leo-yellow/70", text: "text-leo-yellow", label: "Today", ring: "ring-leo-yellow/50" },
-  upcoming: { dot: "bg-leo-blue", glow: "shadow-leo-blue/60", text: "text-leo-blue", label: "Upcoming", ring: "ring-leo-blue/30" },
-} as const;
 
 type PastWorkItem = { title: string; description: string };
 
@@ -52,7 +41,7 @@ const pastWorkByYear: Record<string, PastWorkItem[]> = {
     { title: "Tree Plantation Day", description: "Planted 200 saplings around the campus." },
     { title: "Blood Donation Camp", description: "Organized with the Red Cross; 80 people donated." },
     { title: "Community Library Setup", description: "Set up a reading corner for neighborhood children." },
-    { title: "Teachers' Day Celebration", description: "A student-run program honoring campus teachers." },
+    { title: "Teachers&apos; Day Celebration", description: "A student-run program honoring campus teachers." },
   ],
   "2025/26": [
     { title: "Food Drive for Flood Victims", description: "Collected and packed dry food kits." },
@@ -61,6 +50,7 @@ const pastWorkByYear: Record<string, PastWorkItem[]> = {
     { title: "Winter Warmth Drive", description: "Distributed blankets in the valley." },
   ],
 };
+
 const years = Object.keys(pastWorkByYear).sort().reverse();
 
 /* -------------------------------------------------------------------------- */
@@ -68,10 +58,9 @@ const years = Object.keys(pastWorkByYear).sort().reverse();
 /* -------------------------------------------------------------------------- */
 
 const ROW_SIZE = 5;
-const STEP = 100 / ROW_SIZE; // width of one column, in %
-const EASE = [0.22, 1, 0.36, 1] as const; // smooth "expo out" feel
+const STEP = 100 / ROW_SIZE;
+const EASE = [0.22, 1, 0.36, 1] as const;
 
-// Timezone-safe: parse as UTC and format as UTC so the date never shifts.
 const formatDate = (iso: string) =>
   new Date(`${iso}T00:00:00Z`).toLocaleDateString("en-US", {
     month: "short",
@@ -83,15 +72,17 @@ const formatDate = (iso: string) =>
 const toLocalISO = (d: Date) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
-function buildTimeline(todayISO: string): TimelineItem[] {
-  const items: TimelineItem[] = EVENTS.map((e) => ({
-    ...e,
-    kind: "event",
-    status: e.iso < todayISO ? "past" : e.iso === todayISO ? "today" : "upcoming",
-  }));
+function buildTimeline(items: ApiEvent[], todayISO: string): TimelineItem[] {
+  const itemsWithStatus: TimelineItem[] = items.map((e: ApiEvent) => {
+    const iso = e.date ? e.date.split("T")[0] : "";
+    let status: "past" | "today" | "upcoming";
+    if (iso && iso < new Date().toISOString().split("T")[0]) status = "past";
+    else if (iso === new Date().toISOString().split("T")[0]) status = "today";
+    else status = "upcoming";
+    return { ...e, iso, status, kind: "event" as const };
+  });
 
-  // If nothing happens today, drop a "Today" marker in the right spot.
-  if (!items.some((i) => i.status === "today")) {
+  if (!itemsWithStatus.some((i) => i.status === "today")) {
     const marker: TimelineItem = {
       id: "today-marker",
       kind: "marker",
@@ -100,11 +91,13 @@ function buildTimeline(todayISO: string): TimelineItem[] {
       title: "Today",
       location: "",
       description: "",
+      date: todayISO,
+      type: "marker",
     };
-    const at = items.findIndex((i) => i.iso > todayISO);
-    items.splice(at === -1 ? items.length : at, 0, marker);
+    const at = itemsWithStatus.findIndex((i) => i.iso && i.iso > todayISO);
+    itemsWithStatus.splice(at === -1 ? itemsWithStatus.length : at, 0, marker);
   }
-  return items;
+  return itemsWithStatus;
 }
 
 function chunk<T>(arr: T[], size: number): T[][] {
@@ -138,6 +131,14 @@ const cardVariants: Variants = {
   show: { opacity: 1, y: 0, transition: { duration: 0.5, ease: EASE } },
 };
 
+const viewport = { once: true, amount: 0.2 } as const;
+
+const STATUS = {
+  past: { dot: "bg-leo-green", glow: "shadow-leo-green/60", text: "text-leo-green", label: "Completed", ring: "ring-leo-green/30" },
+  today: { dot: "bg-leo-yellow", glow: "shadow-leo-yellow/70", text: "text-leo-yellow", label: "Today", ring: "ring-leo-yellow/50" },
+  upcoming: { dot: "bg-leo-blue", glow: "shadow-leo-blue/60", text: "text-leo-blue", label: "Upcoming", ring: "ring-leo-blue/30" },
+} as const;
+
 /* -------------------------------------------------------------------------- */
 /*  Timeline pieces                                                           */
 /* -------------------------------------------------------------------------- */
@@ -155,10 +156,9 @@ function PulseRing({ className }: { className: string }) {
 
 function TimelineNode({ item, column }: { item: TimelineItem; column: number }) {
   const [active, setActive] = useState(false);
-  const s = STATUS[item.status];
+  const s = STATUS[item.status as keyof typeof STATUS];
   const isMarker = item.kind === "marker";
 
-  // Keep the card inside the container for the first/last column.
   const align =
     column === 0 ? "left-0" : column === ROW_SIZE - 1 ? "right-0" : "left-1/2 -translate-x-1/2";
 
@@ -199,7 +199,6 @@ function TimelineNode({ item, column }: { item: TimelineItem; column: number }) 
         {formatDate(item.iso)}
       </p>
 
-      {/* Positioning wrapper stays mounted so the exit animation can play */}
       <div className={`pointer-events-none absolute top-full mt-3 w-56 ${align}`}>
         <AnimatePresence>
           {active && !isMarker && (
@@ -238,7 +237,6 @@ function TimelineRow({
   isLast: boolean;
   nextStarted: boolean;
 }) {
-  // Even rows run left → right, odd rows right → left (snake layout).
   const reversed = rowIndex % 2 === 1;
 
   const reached = items.filter((i) => i.status !== "upcoming").length;
@@ -259,7 +257,6 @@ function TimelineRow({
       className={`relative grid items-start ${isLast ? "" : "pb-24"}`}
       style={{ gridTemplateColumns: `repeat(${ROW_SIZE}, minmax(0, 1fr))` }}
     >
-      {/* Track between dots: grey base draws in, green progress follows */}
       {items.length > 1 && (
         <div
           className="absolute top-[22px] h-1"
@@ -286,7 +283,6 @@ function TimelineRow({
         </div>
       )}
 
-      {/* U-turn into the next row — always on the side where this row ends */}
       {!isLast && (
         <div
           className="pointer-events-none absolute top-[22px] h-[calc(100%+4px)] w-16"
@@ -322,14 +318,13 @@ function MobileTimeline({ items }: { items: TimelineItem[] }) {
   return (
     <ol className="relative pl-10">
       {items.map((item, i) => {
-        const s = STATUS[item.status];
+        const s = STATUS[item.status as keyof typeof STATUS];
         const next = items[i + 1];
         const segmentDone = item.status !== "upcoming" && next && next.status !== "upcoming";
         const isMarker = item.kind === "marker";
 
         return (
           <li key={item.id} className="relative pb-6 last:pb-0">
-            {/* Rail segment down to the next dot */}
             {next && (
               <div className="absolute -left-[26px] top-3 -bottom-3 w-1 overflow-hidden rounded-full bg-leo-gray/20">
                 {segmentDone && (
@@ -344,7 +339,6 @@ function MobileTimeline({ items }: { items: TimelineItem[] }) {
               </div>
             )}
 
-            {/* Dot */}
             <motion.div
               initial={{ scale: 0 }}
               whileInView={{ scale: 1 }}
@@ -391,168 +385,147 @@ function MobileTimeline({ items }: { items: TimelineItem[] }) {
 
 export default function OurWorkPage() {
   const [selectedYear, setSelectedYear] = useState(years[0]);
+  const [timelineItems, setTimelineItems] = useState<TimelineItem[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  // Resolve "today" on the client only — avoids hydration mismatches and
-  // stale dates from module-level evaluation.
   const [todayISO] = useState<string>(() => toLocalISO(new Date()));
 
-  const items = useMemo(() => (todayISO ? buildTimeline(todayISO) : []), [todayISO]);
-  const rows = useMemo(() => chunk(items, ROW_SIZE), [items]);
+useEffect(() => {
+    const fetchEvents = async () => {
+      try {
+        const res = await fetch("/api/events");
+        if (res.ok) {
+          const data = await res.json();
+          const items: ApiEvent[] = data.map((event: ApiEvent) => {
+            const iso = event.date ? event.date.split("T")[0] : "";
+            let status: "past" | "today" | "upcoming";
+            if (iso && iso < new Date().toISOString().split("T")[0]) status = "past";
+            else if (iso === new Date().toISOString().split("T")[0]) status = "today";
+            else status = "upcoming";
+            return { ...event, iso: event.date?.split("T")[0] || "", status, kind: "event" as const };
+          });
+          const todayISO = new Date().toISOString().split("T")[0];
+          const timelineItems = buildTimeline(items, todayISO);
+          setTimelineItems(timelineItems);
+        }
+      } catch (error) {
+        console.error("Failed to fetch events:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchEvents();
+  }, []);
+
+  const rows = useMemo(() => chunk(timelineItems, ROW_SIZE), [timelineItems]);
 
   return (
-    // Respects the user's "reduce motion" OS setting for every animation below
     <MotionConfig reducedMotion="user">
-      {/* Hero */}
       <FadeIn>
         <section className="bg-leo-blue text-white">
           <div className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8 lg:py-20">
             <h1 className="text-3xl font-bold md:text-4xl lg:text-5xl">Our Work</h1>
-            <p className="mt-4 max-w-2xl text-lg text-white/90">
-              The club&apos;s recent events and work over the years.
-            </p>
+            <p className="mt-4 max-w-2xl text-lg text-white/90">The club&apos;s recent events and work over the years.</p>
           </div>
         </section>
       </FadeIn>
 
-      {/* Timeline */}
-      <section className="bg-white py-16 sm:py-24">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <FadeIn>
-            <div className="mb-16 text-center">
-              <h2 className="text-3xl font-bold text-leo-blue md:text-4xl">This Year&apos;s Timeline</h2>
-              <p className="mx-auto mt-4 max-w-2xl text-leo-gray">
-                Hover over or focus any dot to reveal event details.
-              </p>
-            </div>
-          </FadeIn>
+      <FadeIn delay={100}>
+        <section className="py-16 sm:py-24 bg-white">
+          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+            <FadeIn>
+              <div className="mb-16 text-center">
+                <h2 className="text-3xl font-bold text-leo-blue md:text-4xl">This Year&apos;s Timeline</h2>
+                <p className="mx-auto mt-4 max-w-2xl text-leo-gray">
+                  Hover over or focus any dot to reveal event details.
+                </p>
+              </div>
+            </FadeIn>
 
-          {/* Desktop snake timeline */}
-          <div className="hidden min-h-[480px] md:block">
-            <div className="py-8">
-              {rows.map((row, i) => (
-                <TimelineRow
-                  key={i}
-                  items={row}
-                  rowIndex={i}
-                  isLast={i === rows.length - 1}
-                  nextStarted={Boolean(rows[i + 1]) && rows[i + 1][0].status !== "upcoming"}
-                />
+            <div className="hidden min-h-[480px] md:block">
+              {loading ? (
+                <div className="flex justify-center py-20">
+                  <div className="h-8 w-8 animate-spin rounded-full border-4 border-leo-blue border-t-transparent"></div>
+                </div>
+              ) : (
+                <div className="py-8">
+                  {rows.map((row, i) => (
+                    <TimelineRow
+                      key={i}
+                      items={row}
+                      rowIndex={i}
+                      isLast={i === rows.length - 1}
+                      nextStarted={Boolean(rows[i + 1]) && rows[i + 1][0]?.status !== "upcoming"}
+                    />
+                  ))}
+                </div>
+              )}
+
+              <FadeIn delay={300}>
+                <div className="mt-8 flex flex-wrap items-center justify-center gap-6">
+                  {(["past", "today", "upcoming"] as const).map((key) => (
+                    <span key={key} className="flex items-center gap-2 text-leo-gray">
+                      <span className={`h-3 w-3 rounded-full ${STATUS[key as keyof typeof STATUS].dot}`} />
+                      <span className="text-sm font-medium">{STATUS[key as keyof typeof STATUS].label}</span>
+                    </span>
+                  ))}
+                </div>
+              </FadeIn>
+            </div>
+
+            <div className="md:hidden">
+              <MobileTimeline items={timelineItems} />
+            </div>
+          </div>
+        </section>
+      </FadeIn>
+
+      <FadeIn delay={200}>
+        <section className="py-16 sm:py-20 bg-leo-yellow/5">
+          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+            <h2 className="text-2xl font-bold text-leo-blue md:text-3xl mb-6">Past work</h2>
+            <p className="mb-6 text-sm text-gray-600">Choose a Leo year to see what the club did.</p>
+
+            <div className="flex flex-wrap gap-2 mb-8">
+              {years.map((year) => (
+                <button
+                  key={year}
+                  type="button"
+                  onClick={() => setSelectedYear(year)}
+                  className={
+                    selectedYear === year
+                      ? "rounded-full bg-leo-blue px-4 py-2 font-semibold text-white transition-all duration-300 hover:scale-105 hover:shadow-lg"
+                      : "rounded-full border border-leo-blue/30 px-4 py-2 font-semibold text-leo-blue transition-all duration-300 hover:bg-leo-blue/10"
+                  }
+                >
+                  {year}
+                </button>
               ))}
             </div>
 
-            <FadeIn delay={300}>
-              <div className="mt-8 flex flex-wrap items-center justify-center gap-6">
-                {(["past", "today", "upcoming"] as const).map((key) => (
-                  <span key={key} className="flex items-center gap-2 text-leo-gray">
-                    <span className={`h-3 w-3 rounded-full ${STATUS[key].dot}`} />
-                    <span className="text-sm font-medium">{STATUS[key].label}</span>
-                  </span>
+            <FadeIn delay={100}>
+              <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+                {pastWorkByYear[selectedYear].map((item) => (
+                  <FadeIn key={item.title} delay={100} className="group">
+                    <Link
+                      href="#"
+                      className="block overflow-hidden rounded-xl border border-leo-gray/10 bg-white hover:shadow-xl hover:-translate-y-2 transition-all duration-300"
+                    >
+                      <div className="flex aspect-video items-center justify-center bg-leo-yellow/20">
+                        <span className="text-sm text-leo-blue/70">Photo</span>
+                      </div>
+                      <div className="p-6">
+                        <h3 className="font-bold text-leo-blue group-hover:text-leo-blue/80 transition-colors">{item.title}</h3>
+                        <p className="mt-1 text-sm text-gray-700">{item.description}</p>
+                      </div>
+                    </Link>
+                  </FadeIn>
                 ))}
               </div>
             </FadeIn>
           </div>
-
-          {/* Mobile timeline */}
-          <div className="md:hidden">
-            <MobileTimeline items={items} />
-          </div>
-        </div>
-      </section>
-
-      {/* Past work */}
-      <section className="bg-gradient-to-b from-white to-leo-yellow/5 py-16 sm:py-24">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <FadeIn>
-            <div className="mb-12 text-center">
-              <h2 className="text-3xl font-bold text-leo-blue md:text-4xl">Past Work</h2>
-              <p className="mx-auto mt-4 max-w-2xl text-leo-gray">
-                Choose a Leo year to see what the club accomplished.
-              </p>
-            </div>
-          </FadeIn>
-
-          {/* Year tabs with a sliding pill */}
-          <FadeIn delay={100}>
-            <div className="mb-12 flex justify-center">
-              <div
-                role="tablist"
-                aria-label="Leo year"
-                className="inline-flex rounded-full border border-leo-blue/15 bg-white p-1.5 shadow-sm"
-              >
-                {years.map((year) => {
-                  const selected = selectedYear === year;
-                  return (
-                    <button
-                      key={year}
-                      role="tab"
-                      aria-selected={selected}
-                      onClick={() => setSelectedYear(year)}
-                      className="relative rounded-full px-6 py-2.5 font-semibold focus:outline-none focus-visible:ring-2 focus-visible:ring-leo-blue/40"
-                    >
-                      {selected && (
-                        <motion.span
-                          layoutId="year-pill"
-                          className="absolute inset-0 rounded-full bg-leo-blue shadow-md"
-                          transition={{ type: "spring", stiffness: 380, damping: 30 }}
-                        />
-                      )}
-                      <span
-                        className={`relative z-10 transition-colors duration-200 ${
-                          selected ? "text-white" : "text-leo-blue hover:text-leo-blue/70"
-                        }`}
-                      >
-                        {year}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          </FadeIn>
-
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={selectedYear}
-              variants={gridVariants}
-              initial="hidden"
-              whileInView="show"
-              exit="exit"
-              viewport={{ once: true, amount: 0.15 }}
-              className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4"
-            >
-              {pastWorkByYear[selectedYear].map((item) => (
-                <motion.div key={item.title} variants={cardVariants} className="h-full">
-                  <motion.div
-                    whileHover={{ y: -6 }}
-                    transition={{ type: "spring", stiffness: 300, damping: 22 }}
-                    className="h-full"
-                  >
-                    <Link
-                      href="#"
-                      className="group block h-full overflow-hidden rounded-2xl border-2 border-leo-gray/10 bg-white shadow-md transition-shadow duration-300 hover:shadow-2xl"
-                    >
-                      <div className="relative aspect-[4/3] overflow-hidden">
-                        <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-leo-yellow/20 to-leo-blue/10 transition-transform duration-500 ease-out group-hover:scale-105">
-                          <span className="text-sm font-medium text-leo-blue/70">Photo</span>
-                        </div>
-                        <span className="absolute right-3 top-3 flex h-8 w-8 translate-y-1 items-center justify-center rounded-full bg-white/90 text-leo-blue opacity-0 shadow transition-all duration-300 group-hover:translate-y-0 group-hover:opacity-100">
-                          <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                            <path d="M7 17 17 7M8 7h9v9" />
-                          </svg>
-                        </span>
-                      </div>
-                      <div className="p-5">
-                        <h3 className="mb-2 font-bold text-leo-blue">{item.title}</h3>
-                        <p className="text-sm text-gray-700">{item.description}</p>
-                      </div>
-                    </Link>
-                  </motion.div>
-                </motion.div>
-              ))}
-            </motion.div>
-          </AnimatePresence>
-        </div>
-      </section>
+        </section>
+      </FadeIn>
     </MotionConfig>
   );
 }

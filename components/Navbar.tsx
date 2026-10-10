@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { signIn, signOut, useSession } from "next-auth/react";
 import {
   AnimatePresence,
   MotionConfig,
@@ -20,6 +21,10 @@ const navLinks = [
   { label: "Our Work", href: "/our-work" },
   { label: "Literature", href: "/literature" },
   { label: "Committee", href: "/committee" },
+];
+
+const adminNavLinks = [
+  { label: "Admin Panel", href: "/admin" },
 ];
 
 const isActive = (pathname: string, href: string) =>
@@ -73,6 +78,8 @@ export default function Navbar() {
   const [hovered, setHovered] = useState<string | null>(null);
   const [logoFailed, setLogoFailed] = useState(false);
   const pathname = usePathname();
+
+  const { data: session } = useSession();
 
   // Scroll state + reading-progress bar
   const { scrollY, scrollYProgress } = useScroll();
@@ -166,20 +173,59 @@ export default function Navbar() {
             })}
           </nav>
 
-          {/* Sign In (desktop) */}
+          {/* Admin Panel link (desktop) - only for admin/superadmin */}
+          {session?.user?.role === "admin" || session?.user?.role === "superadmin" ? (
+            <div className="hidden md:block">
+              <motion.div whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.97 }} transition={{ type: "spring", stiffness: 400, damping: 20 }}>
+                <Link
+                  href="/admin"
+                  className="group relative inline-flex items-center overflow-hidden rounded-lg bg-leo-blue px-5 py-2 text-sm font-semibold text-white shadow-sm transition-shadow duration-300 hover:shadow-lg hover:shadow-leo-blue/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-leo-blue/50"
+                >
+                  <span className="relative z-10">Admin Panel</span>
+                  <span
+                    aria-hidden
+                    className="absolute inset-y-0 -left-full w-full -skew-x-12 bg-white/40 transition-transform duration-700 ease-out group-hover:translate-x-[200%]"
+                  />
+                </Link>
+              </motion.div>
+            </div>
+          ) : null}
+
+          {/* Sign In / User Menu (desktop) */}
           <div className="hidden md:block">
             <motion.div whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.97 }} transition={{ type: "spring", stiffness: 400, damping: 20 }}>
-              <Link
-                href="/sign-in"
-                className="group relative inline-flex items-center overflow-hidden rounded-lg bg-leo-yellow px-5 py-2 text-sm font-semibold text-leo-gray shadow-sm transition-shadow duration-300 hover:shadow-lg hover:shadow-leo-yellow/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-leo-blue/50"
-              >
-                <span className="relative z-10">Sign In</span>
-                {/* Shine sweep */}
-                <span
-                  aria-hidden
-                  className="absolute inset-y-0 -left-full w-full -skew-x-12 bg-white/40 transition-transform duration-700 ease-out group-hover:translate-x-[200%]"
-                />
-              </Link>
+              {!session ? (
+                <button
+                  onClick={() => signIn("google")}
+                  className="group relative inline-flex items-center overflow-hidden rounded-lg bg-leo-yellow px-5 py-2 text-sm font-semibold text-leo-gray shadow-sm transition-shadow duration-300 hover:shadow-lg hover:shadow-leo-yellow/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-leo-blue/50"
+                >
+                  <span className="relative z-10">Sign In</span>
+                  {/* Shine sweep */}
+                  <span
+                    aria-hidden
+                    className="absolute inset-y-0 -left-full w-full -skew-x-12 bg-white/40 transition-transform duration-700 ease-out group-hover:translate-x-[200%]"
+                  />
+                </button>
+              ) : (
+                <div className="flex items-center gap-3">
+                  {session.user?.image && (
+                    <img
+                      src={session.user.image}
+                      alt=""
+                      className="h-8 w-8 rounded-full ring-2 ring-leo-yellow/30"
+                    />
+                  )}
+                  <span className="text-sm font-medium text-leo-gray hidden sm:inline">
+                    {session.user?.name}
+                  </span>
+                  <button
+                    onClick={() => signOut({ callbackUrl: "/" })}
+                    className="text-sm font-medium text-leo-gray hover:text-red-600 transition-colors"
+                  >
+                    Sign Out
+                  </button>
+                </div>
+              )}
             </motion.div>
           </div>
 
@@ -229,12 +275,51 @@ export default function Navbar() {
                   );
                 })}
                 <motion.div variants={itemVariants} className="mt-2 px-3">
-                  <Link
-                    href="/sign-in"
-                    className="flex w-full items-center justify-center rounded-lg bg-leo-yellow px-5 py-3 text-sm font-semibold text-leo-gray transition-shadow duration-300 hover:shadow-lg hover:shadow-leo-yellow/30 active:scale-[0.98]"
-                  >
-                    Sign In
-                  </Link>
+                  {!session ? (
+                    <button
+                      onClick={() => signIn("google")}
+                      className="flex w-full items-center justify-center rounded-lg bg-leo-yellow px-5 py-3 text-sm font-semibold text-leo-gray transition-shadow duration-300 hover:shadow-lg hover:shadow-leo-yellow/30 active:scale-[0.98]"
+                    >
+                      Sign In
+                    </button>
+                  ) : (
+                    <>
+                      {(session.user?.role === "admin" || session.user?.role === "superadmin") && (
+                        <motion.div variants={itemVariants} className="mt-2 px-3">
+                          <Link
+                            href="/admin"
+                            onClick={() => setMenuOpen(false)}
+                            className="flex w-full items-center justify-center rounded-lg bg-leo-blue px-5 py-3 text-sm font-semibold text-white transition-shadow duration-300 hover:shadow-lg hover:shadow-leo-blue/30 active:scale-[0.98]"
+                          >
+                            Admin Panel
+                          </Link>
+                        </motion.div>
+                      )}
+                      <motion.div variants={itemVariants} className="mt-2 px-3">
+                        <div className="flex items-center justify-between px-3 py-2">
+                          <div className="flex items-center gap-3">
+                            {session.user?.image && (
+                              <img
+                                src={session.user.image}
+                                alt=""
+                                className="h-8 w-8 rounded-full ring-2 ring-leo-yellow/30"
+                              />
+                            )}
+                            <div className="text-left">
+                              <p className="font-semibold text-leo-gray">{session.user?.name}</p>
+                              <p className="text-xs text-leo-gray/60">{session.user?.email}</p>
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => signOut({ callbackUrl: "/" })}
+                            className="text-sm font-medium text-red-600 hover:text-red-700"
+                          >
+                            Sign Out
+                          </button>
+                        </div>
+                      </motion.div>
+                    </>
+                  )}
                 </motion.div>
               </nav>
             </motion.div>
