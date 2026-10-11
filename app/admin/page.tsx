@@ -36,6 +36,27 @@ const emptyForm: FormState = {
   description: "",
 };
 
+const impactFields = [
+  { key: "peopleHelped", label: "People helped" },
+  { key: "eventsHeld", label: "Events held" },
+  { key: "volunteerHours", label: "Volunteer hours" },
+  { key: "activeMembers", label: "Active members" },
+] as const;
+
+type ImpactKey = (typeof impactFields)[number]["key"];
+type ImpactForm = Record<ImpactKey, string>;
+
+type LiteratureItem = {
+  _id?: string;
+  id?: string;
+  title: string;
+  author: string;
+  category: string;
+  date: string;
+  likes?: number;
+  comments?: unknown[];
+};
+
 type Message = { text: string; kind: "success" | "error" } | null;
 
 const formatDate = (iso: string) => {
@@ -49,16 +70,42 @@ const formatDate = (iso: string) => {
   });
 };
 
+// Literature dates are stored as ISO strings or human-readable strings
+const formatLiteratureDate = (value: string) => {
+  if (!value) return "";
+  const d = new Date(`${value.split("T")[0]}T00:00:00Z`);
+  if (!Number.isNaN(d.getTime())) {
+    return d.toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+      timeZone: "UTC",
+    });
+  }
+  return value;
+};
+
 export default function AdminPage() {
   const { data: session, status: sessionStatus } = useSession();
   const [events, setEvents] = useState<Event[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<"events" | "admins">("events");
+  const [activeTab, setActiveTab] = useState<
+    "events" | "literature" | "admins" | "settings"
+  >("events");
   const [form, setForm] = useState<FormState>(emptyForm);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [adminEmail, setAdminEmail] = useState("");
   const [promoting, setPromoting] = useState(false);
+  const [savingSettings, setSavingSettings] = useState(false);
+  const [literature, setLiterature] = useState<LiteratureItem[]>([]);
+  const [literatureLoading, setLiteratureLoading] = useState(true);
+  const [impact, setImpact] = useState<ImpactForm>({
+    peopleHelped: "0",
+    eventsHeld: "0",
+    volunteerHours: "0",
+    activeMembers: "0",
+  });
   const [message, setMessage] = useState<Message>(null);
 
   const isSuperAdmin = session?.user?.role === "superadmin";
@@ -79,6 +126,45 @@ export default function AdminPage() {
   useEffect(() => {
     fetchEvents();
   }, [fetchEvents]);
+
+  // Load the current impact numbers on mount
+  useEffect(() => {
+    async function fetchSettings() {
+      try {
+        const res = await fetch("/api/settings");
+        if (res.ok) {
+          const data = await res.json();
+          setImpact({
+            peopleHelped: String(data.peopleHelped ?? 0),
+            eventsHeld: String(data.eventsHeld ?? 0),
+            volunteerHours: String(data.volunteerHours ?? 0),
+            activeMembers: String(data.activeMembers ?? 0),
+          });
+        }
+      } catch (error) {
+        console.error("Failed to load impact numbers:", error);
+      }
+    }
+    fetchSettings();
+  }, []);
+
+  // Load all literature for the Manage Literature tab
+  const fetchLiterature = useCallback(async () => {
+    try {
+      const res = await fetch("/api/literature");
+      if (!res.ok) throw new Error("Failed to fetch literature");
+      const data = await res.json();
+      setLiterature(Array.isArray(data) ? data : []);
+    } catch {
+      setMessage({ text: "Could not load literature.", kind: "error" });
+    } finally {
+      setLiteratureLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchLiterature();
+  }, [fetchLiterature]);
 
   const handleAddEvent = async (e: FormEvent) => {
     e.preventDefault();
@@ -141,6 +227,19 @@ export default function AdminPage() {
     }
   };
 
+  const handleDeleteLiterature = async (id: string) => {
+    if (!window.confirm("Are you sure you want to delete this writing?")) return;
+    setMessage(null);
+    try {
+      const res = await fetch(`/api/literature/${id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("Failed to delete writing");
+      setMessage({ text: "Writing deleted.", kind: "success" });
+      await fetchLiterature();
+    } catch {
+      setMessage({ text: "Could not delete writing.", kind: "error" });
+    }
+  };
+
   const handlePromoteAdmin = async (e: FormEvent) => {
     e.preventDefault();
     if (!adminEmail.trim()) return;
@@ -163,6 +262,35 @@ export default function AdminPage() {
       });
     } finally {
       setPromoting(false);
+    }
+  };
+
+  const handleSaveSettings = async (e: FormEvent) => {
+    e.preventDefault();
+    setSavingSettings(true);
+    setMessage(null);
+    try {
+      const res = await fetch("/api/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          peopleHelped: Number(impact.peopleHelped) || 0,
+          eventsHeld: Number(impact.eventsHeld) || 0,
+          volunteerHours: Number(impact.volunteerHours) || 0,
+          activeMembers: Number(impact.activeMembers) || 0,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Failed to save settings");
+      setMessage({ text: "Impact numbers saved!", kind: "success" });
+    } catch (error) {
+      setMessage({
+        text:
+          error instanceof Error ? error.message : "Could not save impact numbers.",
+        kind: "error",
+      });
+    } finally {
+      setSavingSettings(false);
     }
   };
 
@@ -191,7 +319,8 @@ export default function AdminPage() {
               Admin Dashboard
             </h1>
             <p className="mt-2 text-leo-gray">
-              Manage events and, as the super admin, manage other admins.
+              Manage events, literature, impact numbers and, as the
+              super admin, other admins.
             </p>
           </header>
         </FadeIn>
@@ -223,6 +352,16 @@ export default function AdminPage() {
             >
               Manage Events
             </button>
+            <button
+              onClick={() => setActiveTab("literature")}
+              className={`pb-2 font-medium transition-colors ${
+                activeTab === "literature"
+                  ? "border-b-2 border-leo-blue text-leo-blue"
+                  : "text-leo-gray hover:text-leo-blue"
+              }`}
+            >
+              Manage Literature
+            </button>
             {isSuperAdmin && (
               <button
                 onClick={() => setActiveTab("admins")}
@@ -235,6 +374,16 @@ export default function AdminPage() {
                 Manage Admins
               </button>
             )}
+            <button
+              onClick={() => setActiveTab("settings")}
+              className={`pb-2 font-medium transition-colors ${
+                activeTab === "settings"
+                  ? "border-b-2 border-leo-blue text-leo-blue"
+                  : "text-leo-gray hover:text-leo-blue"
+              }`}
+            >
+              Site Settings
+            </button>
           </div>
         </FadeIn>
 
@@ -462,7 +611,66 @@ export default function AdminPage() {
               </section>
             </FadeIn>
           </>
-        ) : (
+        ) : activeTab === "literature" ? (
+          <FadeIn>
+            <section className="rounded-lg bg-white p-6 shadow">
+              <h2 className="mb-4 text-xl font-semibold text-leo-blue">
+                All Literature
+              </h2>
+              {literatureLoading ? (
+                <p className="text-leo-gray">Loading literature…</p>
+              ) : literature.length === 0 ? (
+                <p className="text-leo-gray">No writings yet.</p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="min-w-full text-left text-sm">
+                    <thead>
+                      <tr className="border-b border-leo-gray/20 text-leo-gray">
+                        <th className="px-3 py-2 font-medium">Title</th>
+                        <th className="px-3 py-2 font-medium">Author</th>
+                        <th className="px-3 py-2 font-medium">Category</th>
+                        <th className="px-3 py-2 font-medium">Date</th>
+                        <th className="px-3 py-2 font-medium">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {literature.map((item) => {
+                        const id = item._id || item.id || "";
+                        return (
+                          <tr
+                            key={id}
+                            className="border-b border-leo-gray/10 last:border-0"
+                          >
+                            <td className="px-3 py-2 font-medium text-gray-900">
+                              {item.title}
+                            </td>
+                            <td className="px-3 py-2 text-leo-gray">
+                              {item.author}
+                            </td>
+                            <td className="px-3 py-2 text-leo-gray">
+                              {item.category}
+                            </td>
+                            <td className="px-3 py-2 text-leo-gray">
+                              {formatLiteratureDate(item.date)}
+                            </td>
+                            <td className="px-3 py-2">
+                              <button
+                                onClick={() => id && handleDeleteLiterature(id)}
+                                className="rounded-md bg-red-50 px-3 py-1 font-medium text-red-600 hover:bg-red-100"
+                              >
+                                Delete
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </section>
+          </FadeIn>
+        ) : activeTab === "admins" ? (
           <FadeIn>
             <section className="rounded-lg bg-white p-6 shadow">
               <h2 className="mb-4 text-xl font-semibold text-leo-blue">
@@ -491,6 +699,56 @@ export default function AdminPage() {
                 >
                   Promote to Admin
                 </button>
+              </form>
+            </section>
+          </FadeIn>
+        ) : (
+          <FadeIn>
+            <section className="rounded-lg bg-white p-6 shadow">
+              <h2 className="mb-4 text-xl font-semibold text-leo-blue">
+                Impact Numbers
+              </h2>
+              <p className="mb-4 text-sm text-leo-gray">
+                These figures appear in the &quot;Our impact&quot; section on
+                the home page.
+              </p>
+              <form
+                onSubmit={handleSaveSettings}
+                className="grid gap-4 sm:grid-cols-2"
+              >
+                {impactFields.map((field) => (
+                  <div key={field.key}>
+                    <label
+                      htmlFor={`impact-${field.key}`}
+                      className="mb-1 block text-sm font-medium text-leo-gray"
+                    >
+                      {field.label}
+                    </label>
+                    <input
+                      id={`impact-${field.key}`}
+                      type="number"
+                      min="0"
+                      step="1"
+                      required
+                      value={impact[field.key]}
+                      onChange={(e) => {
+                        const next = { ...impact };
+                        next[field.key] = e.target.value;
+                        setImpact(next);
+                      }}
+                      className="w-full rounded-md border border-leo-gray/30 px-3 py-2 text-gray-900 focus:border-leo-blue focus:outline-none focus:ring-1 focus:ring-leo-blue"
+                    />
+                  </div>
+                ))}
+                <div className="sm:col-span-2">
+                  <button
+                    type="submit"
+                    disabled={savingSettings}
+                    className="rounded-md bg-leo-blue px-5 py-2 font-medium text-white hover:bg-leo-blue/90 disabled:opacity-50"
+                  >
+                    {savingSettings ? "Saving…" : "Save Changes"}
+                  </button>
+                </div>
               </form>
             </section>
           </FadeIn>

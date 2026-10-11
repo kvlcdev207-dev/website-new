@@ -11,6 +11,7 @@ type LiteratureDocument = {
   category: string;
   title: string;
   author: string;
+  authorEmail?: string;
   excerpt: string;
   date: string;
   fullContent: string;
@@ -51,6 +52,7 @@ export async function POST(request: Request) {
 
     // Author comes from the signed-in session, never from the client
     const author = session.user.name || "Anonymous"
+    const authorEmail = session.user.email ?? undefined
 
     const client = await clientPromise
     const db = client.db("kvlc_database")
@@ -58,11 +60,12 @@ export async function POST(request: Request) {
     const result = await db
       .collection<LiteratureDocument>("literature")
       .insertOne({
-      _id: crypto.randomUUID(),
-      category,
-      title: String(title).trim(),
-      author,
-      excerpt: String(content).trim().slice(0, 160),
+        _id: crypto.randomUUID(),
+        category,
+        title: String(title).trim(),
+        author,
+        authorEmail,
+        excerpt: String(content).trim().slice(0, 160),
       date: new Date().toISOString(),
       fullContent: content,
       likes: 0,

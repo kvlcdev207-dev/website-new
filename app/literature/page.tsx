@@ -81,7 +81,7 @@ export default function LiteraturePage() {
       </FadeIn>
 
       {/* Top literature */}
-      <TopLiteratureSlider />
+      <TopLiteratureSlider writings={allWritings.slice(0, 5)} />
 
       {/* Filters */}
       <section className="bg-white pb-4 pt-6">

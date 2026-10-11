@@ -10,9 +10,19 @@ import {
   type PanInfo,
   type Variants,
 } from "framer-motion";
-import { writings, categoryColors, categoryLabels } from "@/data/literature";
+import { categoryColors, categoryLabels } from "@/data/literature";
 
-type Writing = (typeof writings)[number];
+// Shape of a writing document stored in the database
+type Writing = {
+  _id: string;
+  category: "poetry" | "stories" | "blogs";
+  title: string;
+  author: string;
+  excerpt: string;
+  date: string;
+  likes?: number;
+  comments?: unknown[];
+};
 
 const EASE = [0.22, 1, 0.36, 1] as const;
 const MAX_ITEMS = 5;
@@ -85,11 +95,11 @@ function ProgressBar({
 
 /* -------------------------------- component -------------------------------- */
 
-export default function TopLiteratureSlider() {
+export default function TopLiteratureSlider({ writings }: { writings: Writing[] }) {
   // "Top" = most liked
   const top = useMemo(
     () => [...writings].sort((a, b) => (b.likes ?? 0) - (a.likes ?? 0)).slice(0, MAX_ITEMS),
-    []
+    [writings]
   );
 
   const [[index, direction], setPage] = useState<[number, number]>([0, 1]);
@@ -184,7 +194,7 @@ export default function TopLiteratureSlider() {
 
                 <AnimatePresence mode="wait" custom={direction} initial={false}>
                   <motion.article
-                    key={current.id}
+                    key={current._id}
                     custom={direction}
                     variants={slideVariants}
                     initial="enter"
@@ -240,7 +250,7 @@ export default function TopLiteratureSlider() {
                       </div>
 
                       <Link
-                        href={`/literature/${current.id}`}
+                        href={`/literature/${current._id}`}
                         className="group inline-flex items-center gap-2 rounded-full bg-leo-yellow px-6 py-3 text-sm font-semibold text-leo-gray transition-shadow duration-300 hover:shadow-xl hover:shadow-leo-yellow/30 focus:outline-none focus-visible:ring-2 focus-visible:ring-white"
                       >
                         Read writing
@@ -258,7 +268,7 @@ export default function TopLiteratureSlider() {
                 <div className="mt-4 flex gap-2 lg:hidden">
                   {top.map((w, i) => (
                     <button
-                      key={w.id}
+                      key={w._id}
                       type="button"
                       onClick={() => select(i)}
                       aria-label={`Show ${w.title}`}
@@ -284,7 +294,7 @@ export default function TopLiteratureSlider() {
                 {top.map((w, i) => {
                   const active = i === index;
                   return (
-                    <li key={w.id} className="relative">
+                    <li key={w._id} className="relative">
                       <button
                         type="button"
                         onClick={() => select(i)}

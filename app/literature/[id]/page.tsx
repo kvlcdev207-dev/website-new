@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { AnimatePresence, MotionConfig, motion } from "framer-motion";
 import FadeIn from "@/components/FadeIn";
@@ -38,6 +38,7 @@ interface Writing {
   category: "poetry" | "stories" | "blogs";
   title: string;
   author: string;
+  authorEmail?: string;
   excerpt: string;
   date: string;
   fullContent: string;
@@ -52,6 +53,7 @@ interface Comment {
   id: string;
   text: string;
   author: string;
+  authorEmail?: string;
   date: string;
   timestamp?: string;
 }
@@ -74,6 +76,7 @@ const categoryColors = {
 export default function LiteratureDetailPage() {
   const params = useParams();
   const id = params.id as string;
+  const router = useRouter();
   const { data: session } = useSession();
   const [writing, setWriting] = useState<Writing | null>(null);
   const [loading, setLoading] = useState(true);
@@ -160,6 +163,36 @@ export default function LiteratureDetailPage() {
     }
   };
 
+  const handleDeletePost = async () => {
+    if (!window.confirm("Delete this writing? This cannot be undone.")) return;
+    try {
+      const res = await fetch(`/api/literature/${id}`, { method: "DELETE" });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || "Failed to delete writing");
+      }
+      router.push("/literature");
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Could not delete writing.");
+    }
+  };
+
+  const handleDeleteComment = async (commentId: string) => {
+    if (!window.confirm("Delete this comment?")) return;
+    try {
+      const res = await fetch(`/api/literature/${id}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "deleteComment", commentId }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Failed to delete comment");
+      setComments(Array.isArray(data.comments) ? data.comments : []);
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Could not delete comment.");
+    }
+  };
+
   const handleCommentSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!session || !newComment.trim()) return;
@@ -222,6 +255,9 @@ export default function LiteratureDetailPage() {
   const userEmail = session?.user?.email;
   const isLiked = Boolean(userEmail && writing.likedBy?.includes(userEmail));
 
+  // The signed-in user wrote this piece, so they may delete it
+  const isAuthor = Boolean(userEmail && writing.authorEmail === userEmail);
+
   return (
     <MotionConfig reducedMotion="user">
       {/* Hero */}
@@ -261,6 +297,19 @@ export default function LiteratureDetailPage() {
                 </svg>
                 {readingMinutes} min read
               </span>
+              {isAuthor && (
+                <button
+                  onClick={handleDeletePost}
+                  className="inline-flex items-center gap-1.5 rounded-full bg-red-500/20 px-3 py-1 text-sm font-medium text-white/90 transition-colors hover:bg-red-500/40"
+                >
+                  <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                    <path d="M3 6h18" />
+                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
+                    <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                  </svg>
+                  Delete Post
+                </button>
+              )}
             </div>
           </div>
         </section>
@@ -458,6 +507,14 @@ export default function LiteratureDetailPage() {
                       <div className="mb-1 flex flex-wrap items-baseline gap-x-2">
                         <p className="font-medium text-leo-gray">{comment.author}</p>
                         <p className="text-xs text-leo-gray/50">{formatTimestamp(comment.timestamp || comment.date)}</p>
+                        {comment.authorEmail && comment.authorEmail === session?.user?.email && (
+                          <button
+                            onClick={() => handleDeleteComment(comment.id)}
+                            className="ml-auto rounded-md bg-red-50 px-2 py-0.5 text-xs font-medium text-red-600 transition-colors hover:bg-red-100"
+                          >
+                            Delete
+                          </button>
+                        )}
                       </div>
                       <p className="break-words text-leo-gray/90">{comment.text}</p>
                     </div>
