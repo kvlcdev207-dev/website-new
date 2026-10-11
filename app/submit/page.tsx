@@ -3,6 +3,9 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { useSession, signIn } from "next-auth/react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import remarkBreaks from "remark-breaks";
 import FadeIn from "@/components/FadeIn";
 
 const categoryOptions = [
@@ -327,8 +330,10 @@ export default function SubmitPage() {
               ) : (
                 <div className="min-h-[300px] rounded-lg border border-leo-gray/20 bg-leo-gray/5 px-5 py-4">
                   {content.trim() ? (
-                    <div className="whitespace-pre-wrap text-lg leading-relaxed text-leo-gray">
-                      {content}
+                    <div className="prose prose-lg prose-blue max-w-none">
+                      <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]}>
+                        {content}
+                      </ReactMarkdown>
                     </div>
                   ) : (
                     <p className="text-sm italic text-leo-gray/50">

@@ -5,6 +5,9 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { AnimatePresence, MotionConfig, motion } from "framer-motion";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import remarkBreaks from "remark-breaks";
 import FadeIn from "@/components/FadeIn";
 
 const EASE = [0.22, 1, 0.36, 1] as const;
@@ -338,11 +341,13 @@ export default function LiteratureDetailPage() {
             initial={{ opacity: 0, y: 24 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6, ease: EASE, delay: 0.15 }}
-            className={`whitespace-pre-wrap text-lg leading-relaxed text-leo-gray sm:text-xl ${
-              isPoetry ? "text-center font-serif leading-loose" : "sm:leading-9"
-            }`}
           >
-            {writing.fullContent}
+            {/* Markdown content; remark-breaks keeps poetry line breaks */}
+            <div className={`prose prose-lg prose-blue max-w-none ${isPoetry ? "text-center" : ""}`}>
+              <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]}>
+                {writing.fullContent}
+              </ReactMarkdown>
+            </div>
           </motion.article>
 
           {/* Actions */}

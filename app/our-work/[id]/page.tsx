@@ -3,6 +3,9 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import remarkBreaks from "remark-breaks";
 import FadeIn from "@/components/FadeIn";
 
 type PastWorkItem = {
@@ -100,9 +103,11 @@ export default function PastWorkDetailPage() {
                   <h2 className="mb-4 text-2xl font-bold text-leo-blue sm:text-3xl">
                     {item.title}
                   </h2>
-                  <p className="whitespace-pre-line leading-relaxed text-gray-700">
-                    {item.description}
-                  </p>
+                   <div className="prose prose-lg prose-blue max-w-none">
+                     <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]}>
+                       {item.description}
+                     </ReactMarkdown>
+                   </div>
                 </div>
                 <div className="mt-8">
                   <Link
