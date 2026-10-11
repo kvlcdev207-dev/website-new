@@ -3,6 +3,8 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import clientPromise from "@/lib/mongodb"
 
+export const dynamic = 'force-dynamic';
+
 // Shape of a comment stored inside a literature document
 type StoredComment = {
   id?: string;

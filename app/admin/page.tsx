@@ -40,7 +40,6 @@ type FormState = {
   location: string;
   type: string;
   description: string;
-  imageUrl: string;
 };
 
 const emptyForm: FormState = {
@@ -49,7 +48,6 @@ const emptyForm: FormState = {
   location: "",
   type: eventTypes[0],
   description: "",
-  imageUrl: "",
 };
 
 const impactFields = [
@@ -75,10 +73,12 @@ type LiteratureItem = {
 
 const pastWorkYears = ["2026/27", "2025/26"];
 
-type AdminUser = {
+type UserRow = {
   name?: string;
   email: string;
   role: string;
+  // True when this row is the club's super admin account
+  isSuperAdmin: boolean;
 };
 
 type PastWorkItem = {
@@ -142,8 +142,6 @@ export default function AdminPage() {
   const [form, setForm] = useState<FormState>(emptyForm);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const [adminEmail, setAdminEmail] = useState("");
-  const [promoting, setPromoting] = useState(false);
   const [savingSettings, setSavingSettings] = useState(false);
   const [literature, setLiterature] = useState<LiteratureItem[]>([]);
   const [literatureLoading, setLiteratureLoading] = useState(true);
@@ -155,8 +153,9 @@ export default function AdminPage() {
     null
   );
   const [pastWorkSubmitting, setPastWorkSubmitting] = useState(false);
-  const [admins, setAdmins] = useState<AdminUser[]>([]);
-  const [adminsLoading, setAdminsLoading] = useState(true);
+  const [users, setUsers] = useState<UserRow[]>([]);
+  const [usersLoading, setUsersLoading] = useState(true);
+  const [changingRole, setChangingRole] = useState<string | null>(null);
   const [impact, setImpact] = useState<ImpactForm>({
     peopleHelped: "0",
     eventsHeld: "0",
@@ -241,23 +240,25 @@ export default function AdminPage() {
     fetchPastWork();
   }, [fetchPastWork]);
 
-  // Load the current admins for the Manage Admins tab
-  const fetchAdmins = useCallback(async () => {
+  // Load all registered users when the Manage Admins tab is opened
+  const fetchUsers = useCallback(async () => {
     try {
-      const res = await fetch("/api/admins");
-      if (!res.ok) throw new Error("Failed to fetch admins");
+      const res = await fetch("/api/users");
+      if (!res.ok) throw new Error("Failed to fetch users");
       const data = await res.json();
-      setAdmins(Array.isArray(data.admins) ? data.admins : []);
+      setUsers(Array.isArray(data.users) ? data.users : []);
     } catch {
-      setMessage({ text: "Could not load admins.", kind: "error" });
+      setMessage({ text: "Could not load users.", kind: "error" });
     } finally {
-      setAdminsLoading(false);
+      setUsersLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    fetchAdmins();
-  }, [fetchAdmins]);
+    if (activeTab === "admins") {
+      fetchUsers();
+    }
+  }, [activeTab, fetchUsers]);
 
   const handleAddEvent = async (e: FormEvent) => {
     e.preventDefault();
@@ -301,7 +302,6 @@ export default function AdminPage() {
       location: event.location,
       type: event.type,
       description: event.description,
-      imageUrl: event.imageUrl || "",
     });
     setEditingId(event._id || event.id || null);
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -395,55 +395,33 @@ export default function AdminPage() {
     }
   };
 
-  const handlePromoteAdmin = async (e: FormEvent) => {
-    e.preventDefault();
-    if (!adminEmail.trim()) return;
-    setPromoting(true);
+  const handleSetRole = async (email: string, role: "admin" | "user") => {
     setMessage(null);
+    setChangingRole(email);
     try {
-      const res = await fetch("/api/admin/promote", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: adminEmail.trim() }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || "Failed to promote user");
-      setMessage({ text: data.message || "User promoted to admin!", kind: "success" });
-      setAdminEmail("");
-    } catch (error) {
-      setMessage({
-        text: error instanceof Error ? error.message : "Could not promote user.",
-        kind: "error",
-      });
-    } finally {
-      setPromoting(false);
-    }
-  };
-
-  const handleRemoveAdmin = async (email: string) => {
-    if (
-      !window.confirm(
-        `Remove admin access from ${email}? They will become a regular user.`
-      )
-    )
-      return;
-    setMessage(null);
-    try {
-      const res = await fetch("/api/admins", {
+      const res = await fetch("/api/users", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, role: "user" }),
+        body: JSON.stringify({ email, role }),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || "Failed to remove admin");
-      setMessage({ text: "Admin access removed.", kind: "success" });
-      await fetchAdmins();
+      if (!res.ok) throw new Error(data.error || "Failed to update role");
+      setMessage({
+        text:
+          role === "admin"
+            ? "User promoted to admin."
+            : "Admin access removed.",
+        kind: "success",
+      });
+      await fetchUsers();
     } catch (error) {
       setMessage({
         text:
-          error instanceof Error ? error.message : "Could not remove admin.",
+          error instanceof Error ? error.message : "Could not update role.",
         kind: "error",
       });
+    } finally {
+      setChangingRole(null);
     }
   };
 
@@ -659,15 +637,6 @@ export default function AdminPage() {
                         </option>
                       ))}
                     </select>
-                  </div>
-                  <div className="sm:col-span-2">
-                    <span className="mb-1 block text-sm font-medium text-leo-gray">
-                      Image
-                    </span>
-                    <ImageUpload
-                      imageUrl={form.imageUrl}
-                      onUpload={(url) => setForm({ ...form, imageUrl: url })}
-                    />
                   </div>
                   <div className="sm:col-span-2">
                     <label
@@ -1024,101 +993,87 @@ export default function AdminPage() {
             </FadeIn>
           </>
         ) : activeTab === "admins" ? (
-          <>
-            <FadeIn>
-              <section className="rounded-lg bg-white p-6 shadow">
-                <h2 className="mb-4 text-xl font-semibold text-leo-blue">
-                  Promote a User to Admin
-                </h2>
-                <p className="mb-4 text-sm text-leo-gray">
-                  Enter the Google email of a registered user. They will gain full
-                  admin access.
-                </p>
-                <form
-                  onSubmit={handlePromoteAdmin}
-                  className="flex flex-col gap-3 sm:flex-row sm:items-start"
-                >
-                  <input
-                    type="email"
-                    required
-                    value={adminEmail}
-                    onChange={(e) => setAdminEmail(e.target.value)}
-                    placeholder="user@example.com"
-                    className="w-full rounded-md border border-leo-gray/30 px-3 py-2 text-gray-900 focus:border-leo-blue focus:outline-none focus:ring-1 focus:ring-leo-blue sm:max-w-xs"
-                  />
-                  <button
-                    type="submit"
-                    disabled={promoting || !adminEmail.trim()}
-                    className="rounded-md bg-leo-yellow px-5 py-2 font-medium text-leo-gray hover:bg-leo-yellow/90 disabled:opacity-50"
-                  >
-                    Promote to Admin
-                  </button>
-                </form>
-              </section>
-            </FadeIn>
-
-            <FadeIn delay={150}>
-              <section className="mt-8 rounded-lg bg-white p-6 shadow">
-                <h2 className="mb-4 text-xl font-semibold text-leo-blue">
-                  Current Admins
-                </h2>
-                {adminsLoading ? (
-                  <p className="text-leo-gray">Loading admins…</p>
-                ) : admins.length === 0 ? (
-                  <p className="text-leo-gray">No admins found.</p>
-                ) : (
-                  <div className="overflow-x-auto">
-                    <table className="min-w-full text-left text-sm">
-                      <thead>
-                        <tr className="border-b border-leo-gray/20 text-leo-gray">
-                          <th className="px-3 py-2 font-medium">Name</th>
-                          <th className="px-3 py-2 font-medium">Email</th>
-                          <th className="px-3 py-2 font-medium">Role</th>
-                          <th className="px-3 py-2 font-medium">Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {admins.map((admin) => (
-                          <tr
-                            key={admin.email}
-                            className="border-b border-leo-gray/10 last:border-0"
-                          >
-                            <td className="px-3 py-2 font-medium text-gray-900">
-                              {admin.name || "—"}
-                            </td>
-                            <td className="px-3 py-2 text-leo-gray">
-                              {admin.email}
-                            </td>
-                            <td className="px-3 py-2">
-                              <span
-                                className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-                                  admin.role === "superadmin"
-                                    ? "bg-leo-yellow/10 text-leo-yellow"
-                                    : "bg-leo-blue/10 text-leo-blue"
-                                }`}
-                              >
-                                {admin.role}
+          <FadeIn>
+            <section className="rounded-lg bg-white p-6 shadow">
+              <h2 className="mb-4 text-xl font-semibold text-leo-blue">
+                All Registered Users
+              </h2>
+              {usersLoading ? (
+                <p className="text-leo-gray">Loading users…</p>
+              ) : users.length === 0 ? (
+                <p className="text-leo-gray">No users found.</p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="min-w-full text-left text-sm">
+                    <thead>
+                      <tr className="border-b border-leo-gray/20 text-leo-gray">
+                        <th className="px-3 py-2 font-medium">Name</th>
+                        <th className="px-3 py-2 font-medium">Email</th>
+                        <th className="px-3 py-2 font-medium">Role</th>
+                        <th className="px-3 py-2 font-medium">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {users.map((user) => (
+                        <tr
+                          key={user.email}
+                          className="border-b border-leo-gray/10 last:border-0"
+                        >
+                          <td className="px-3 py-2 font-medium text-gray-900">
+                            {user.name || "—"}
+                          </td>
+                          <td className="px-3 py-2 text-leo-gray">
+                            {user.email}
+                          </td>
+                          <td className="px-3 py-2">
+                            <span
+                              className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                                user.role === "superadmin"
+                                  ? "bg-leo-yellow/10 text-leo-yellow"
+                                  : user.role === "admin"
+                                    ? "bg-leo-blue/10 text-leo-blue"
+                                    : "bg-leo-gray/10 text-leo-gray"
+                              }`}
+                            >
+                              {user.role}
+                            </span>
+                          </td>
+                          <td className="px-3 py-2">
+                            {user.isSuperAdmin ? (
+                              <span className="text-xs text-leo-gray">
+                                Super admin — cannot be changed
                               </span>
-                            </td>
-                            <td className="px-3 py-2">
-                              {admin.role !== "superadmin" && (
-                                <button
-                                  onClick={() => handleRemoveAdmin(admin.email)}
-                                  className="rounded-md bg-red-50 px-3 py-1 font-medium text-red-600 hover:bg-red-100"
-                                >
-                                  Remove Admin
-                                </button>
-                              )}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </section>
-            </FadeIn>
-          </>
+                            ) : (
+                              <button
+                                onClick={() =>
+                                  handleSetRole(
+                                    user.email,
+                                    user.role === "user" ? "admin" : "user"
+                                  )
+                                }
+                                disabled={changingRole === user.email}
+                                className={
+                                  user.role === "user"
+                                    ? "rounded-md bg-leo-blue/10 px-3 py-1 font-medium text-leo-blue hover:bg-leo-blue/20 disabled:opacity-50"
+                                    : "rounded-md bg-red-50 px-3 py-1 font-medium text-red-600 hover:bg-red-100 disabled:opacity-50"
+                                }
+                              >
+                                {changingRole === user.email
+                                  ? "Updating…"
+                                  : user.role === "user"
+                                    ? "Promote to Admin"
+                                    : "Remove Admin"}
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </section>
+          </FadeIn>
         ) : (
           <FadeIn>
             <section className="rounded-lg bg-white p-6 shadow">

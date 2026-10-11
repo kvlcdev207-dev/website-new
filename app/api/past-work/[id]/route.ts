@@ -4,6 +4,8 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import clientPromise from "@/lib/mongodb"
 
+export const dynamic = 'force-dynamic';
+
 // Shape of a past work item stored in the pastWork collection
 type PastWorkInput = {
   title: string

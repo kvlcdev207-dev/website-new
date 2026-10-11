@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Image from "next/image";
 import FadeIn from "@/components/FadeIn";
+import ImageModal from "@/components/ImageModal";
 
 type Member = {
   name: string;
@@ -33,22 +34,34 @@ const committeeMembers: Member[] = [
   { name: "Leo Rohit Rai", role: "Content Creator", image: "/images/committee/rohit-rai.png", priority: 15 },
 ];
 
-type PastCommittee = { year: string; image?: string };
+type PastCommittee = {
+  year: string;
+  // Photo in /public/images/committee/past/ — committed with the code
+  image: string;
+};
 
 // Add as many as you want — the grid adjusts automatically.
+// A missing photo falls back to the "Team Photo" placeholder.
 const pastCommittees: PastCommittee[] = [
-  { year: "2025/26" },
-  { year: "2024/25" },
-  { year: "2023/24" },
-  { year: "2022/23" },
-  { year: "2021/22" },
-  { year: "2020/21" },
+  { year: "2025/26", image: "/images/committee/past/2025-26.png" },
+  { year: "2024/25", image: "/images/committee/past/2024-25.png" },
+  { year: "2023/24", image: "/images/committee/past/2023-24.png" },
+  { year: "2022/23", image: "/images/committee/past/2022-23.png" },
+  { year: "2021/22", image: "/images/committee/past/2021-22.png" },
 ];
 
 // Logo shown faintly in each card's banner. Put the file in /public.
 const BANNER_LOGO = "/logo.png";
 
-function MemberCard({ member, index }: { member: Member; index: number }) {
+function MemberCard({
+  member,
+  index,
+  onSelect,
+}: {
+  member: Member;
+  index: number;
+  onSelect: (image: string) => void;
+}) {
   const [imageFailed, setImageFailed] = useState(false);
 
   return (
@@ -82,13 +95,21 @@ function MemberCard({ member, index }: { member: Member; index: number }) {
                 <circle cx="12" cy="7" r="4" />
               </svg>
             ) : (
-              <Image
-                src={member.image}
-                alt={member.name}
-                fill
-                className="object-cover"
-                onError={() => setImageFailed(true)}
-              />
+              <button
+                type="button"
+                onClick={() => onSelect(member.image)}
+                aria-label={`View full size photo of ${member.name}`}
+                className="absolute inset-0 cursor-zoom-in"
+              >
+                <Image
+                  src={member.image}
+                  alt={member.name}
+                  fill
+                  sizes="(max-width: 768px) 50vw, (max-width: 1200px) 20vw, 15vw"
+                  className="object-cover"
+                  onError={() => setImageFailed(true)}
+                />
+              </button>
             )}
           </div>
         </div>
@@ -98,6 +119,40 @@ function MemberCard({ member, index }: { member: Member; index: number }) {
           <span className="mt-3 inline-block rounded-full bg-leo-yellow/20 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-leo-blue">
             {member.role}
           </span>
+        </div>
+      </div>
+    </FadeIn>
+  );
+}
+
+function PastCommitteeCard({
+  committee,
+  index,
+}: {
+  committee: PastCommittee;
+  index: number;
+}) {
+  const [imageFailed, setImageFailed] = useState(false);
+
+  return (
+    <FadeIn delay={(index % 3) * 100}>
+      <div className="group relative aspect-[4/3] overflow-hidden rounded-2xl border border-leo-gray/10 bg-gradient-to-br from-leo-gray/5 to-leo-gray/15 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-xl">
+        {imageFailed ? (
+          <div className="flex h-full items-center justify-center text-sm text-leo-gray/50">
+            Team Photo — {committee.year}
+          </div>
+        ) : (
+          <Image
+            src={committee.image}
+            alt={committee.year}
+            fill
+            sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+            className="object-cover transition-transform duration-500 group-hover:scale-105"
+            onError={() => setImageFailed(true)}
+          />
+        )}
+        <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-leo-blue/90 to-transparent p-4 pt-12">
+          <h3 className="text-lg font-bold text-white">Leo Year {committee.year}</h3>
         </div>
       </div>
     </FadeIn>
@@ -117,6 +172,9 @@ function SectionHeading({ title, subtitle }: { title: string; subtitle: string }
 }
 
 export default function CommitteePage() {
+  // Full size photo opened from the grid
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
+
   // Members always render in priority order
   const sortedMembers = [...committeeMembers].sort(
     (a, b) => a.priority - b.priority
@@ -144,7 +202,12 @@ export default function CommitteePage() {
           <SectionHeading title="Committee Members" subtitle="The team steering the club this year, listed by priority." />
           <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
             {sortedMembers.map((member, i) => (
-              <MemberCard key={member.name} member={member} index={i} />
+              <MemberCard
+                key={member.name}
+                member={member}
+                index={i}
+                onSelect={setSelectedImage}
+              />
             ))}
           </div>
         </div>
@@ -154,30 +217,24 @@ export default function CommitteePage() {
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <SectionHeading title="Past Committees" subtitle="The teams who built the club before us." />
           <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
-            {pastCommittees.map((c, i) => (
-              <FadeIn key={c.year} delay={(i % 3) * 100}>
-                <div className="group relative aspect-[4/3] overflow-hidden rounded-2xl border border-leo-gray/10 bg-gradient-to-br from-leo-gray/5 to-leo-gray/15 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-xl">
-                  {c.image ? (
-                    <Image
-                      src={c.image}
-                      alt={`Leo Year ${c.year} committee`}
-                      fill
-                      className="object-cover transition-transform duration-500 group-hover:scale-105"
-                    />
-                  ) : (
-                    <div className="flex h-full items-center justify-center text-sm text-leo-gray/50">
-                      Team Photo — {c.year}
-                    </div>
-                  )}
-                  <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-leo-blue/90 to-transparent p-4 pt-12">
-                    <h3 className="text-lg font-bold text-white">Leo Year {c.year}</h3>
-                  </div>
-                </div>
-              </FadeIn>
+            {pastCommittees.map((committee, i) => (
+              <PastCommitteeCard
+                key={committee.year}
+                committee={committee}
+                index={i}
+              />
             ))}
           </div>
         </div>
       </section>
+
+      {/* Full size photo viewer */}
+      {selectedImage && (
+        <ImageModal
+          src={selectedImage}
+          onClose={() => setSelectedImage(null)}
+        />
+      )}
     </>
   );
 }
