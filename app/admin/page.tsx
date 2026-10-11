@@ -57,6 +57,31 @@ type LiteratureItem = {
   comments?: unknown[];
 };
 
+const pastWorkYears = ["2026/27", "2025/26"];
+
+type PastWorkItem = {
+  _id?: string;
+  id?: string;
+  title: string;
+  year: string;
+  description: string;
+  imageUrl?: string;
+};
+
+type PastWorkFormState = {
+  title: string;
+  year: string;
+  description: string;
+  imageUrl: string;
+};
+
+const emptyPastWorkForm: PastWorkFormState = {
+  title: "",
+  year: pastWorkYears[0],
+  description: "",
+  imageUrl: "",
+};
+
 type Message = { text: string; kind: "success" | "error" } | null;
 
 const formatDate = (iso: string) => {
@@ -90,7 +115,7 @@ export default function AdminPage() {
   const [events, setEvents] = useState<Event[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<
-    "events" | "literature" | "admins" | "settings"
+    "events" | "literature" | "pastwork" | "admins" | "settings"
   >("events");
   const [form, setForm] = useState<FormState>(emptyForm);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -100,6 +125,14 @@ export default function AdminPage() {
   const [savingSettings, setSavingSettings] = useState(false);
   const [literature, setLiterature] = useState<LiteratureItem[]>([]);
   const [literatureLoading, setLiteratureLoading] = useState(true);
+  const [pastWork, setPastWork] = useState<PastWorkItem[]>([]);
+  const [pastWorkLoading, setPastWorkLoading] = useState(true);
+  const [pastWorkForm, setPastWorkForm] =
+    useState<PastWorkFormState>(emptyPastWorkForm);
+  const [pastWorkEditingId, setPastWorkEditingId] = useState<string | null>(
+    null
+  );
+  const [pastWorkSubmitting, setPastWorkSubmitting] = useState(false);
   const [impact, setImpact] = useState<ImpactForm>({
     peopleHelped: "0",
     eventsHeld: "0",
@@ -165,6 +198,24 @@ export default function AdminPage() {
   useEffect(() => {
     fetchLiterature();
   }, [fetchLiterature]);
+
+  // Load all past work for the Manage Past Work tab
+  const fetchPastWork = useCallback(async () => {
+    try {
+      const res = await fetch("/api/past-work");
+      if (!res.ok) throw new Error("Failed to fetch past work");
+      const data = await res.json();
+      setPastWork(Array.isArray(data) ? data : []);
+    } catch {
+      setMessage({ text: "Could not load past work.", kind: "error" });
+    } finally {
+      setPastWorkLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchPastWork();
+  }, [fetchPastWork]);
 
   const handleAddEvent = async (e: FormEvent) => {
     e.preventDefault();
@@ -237,6 +288,68 @@ export default function AdminPage() {
       await fetchLiterature();
     } catch {
       setMessage({ text: "Could not delete writing.", kind: "error" });
+    }
+  };
+
+  const handleSavePastWork = async (e: FormEvent) => {
+    e.preventDefault();
+    setPastWorkSubmitting(true);
+    setMessage(null);
+    try {
+      if (pastWorkEditingId) {
+        const res = await fetch(`/api/past-work/${pastWorkEditingId}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(pastWorkForm),
+        });
+        if (!res.ok) throw new Error("Failed to update past work");
+        setMessage({ text: "Past work updated successfully!", kind: "success" });
+      } else {
+        const res = await fetch("/api/past-work", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(pastWorkForm),
+        });
+        if (!res.ok) throw new Error("Failed to create past work");
+        setMessage({ text: "Past work created successfully!", kind: "success" });
+      }
+      setPastWorkForm(emptyPastWorkForm);
+      setPastWorkEditingId(null);
+      await fetchPastWork();
+    } catch {
+      setMessage({
+        text: pastWorkEditingId
+          ? "Could not update past work."
+          : "Could not create past work.",
+        kind: "error",
+      });
+    } finally {
+      setPastWorkSubmitting(false);
+    }
+  };
+
+  const handleEditPastWork = (item: PastWorkItem) => {
+    setPastWorkForm({
+      title: item.title,
+      year: item.year,
+      description: item.description,
+      imageUrl: item.imageUrl || "",
+    });
+    setPastWorkEditingId(item._id || item.id || null);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const handleDeletePastWork = async (id: string) => {
+    if (!window.confirm("Delete this past work item? This cannot be undone."))
+      return;
+    setMessage(null);
+    try {
+      const res = await fetch(`/api/past-work/${id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("Failed to delete past work");
+      setMessage({ text: "Past work item deleted.", kind: "success" });
+      await fetchPastWork();
+    } catch {
+      setMessage({ text: "Could not delete past work.", kind: "error" });
     }
   };
 
@@ -319,7 +432,7 @@ export default function AdminPage() {
               Admin Dashboard
             </h1>
             <p className="mt-2 text-leo-gray">
-              Manage events, literature, impact numbers and, as the
+              Manage events, past work, literature, impact numbers and, as the
               super admin, other admins.
             </p>
           </header>
@@ -351,6 +464,16 @@ export default function AdminPage() {
               }`}
             >
               Manage Events
+            </button>
+            <button
+              onClick={() => setActiveTab("pastwork")}
+              className={`pb-2 font-medium transition-colors ${
+                activeTab === "pastwork"
+                  ? "border-b-2 border-leo-blue text-leo-blue"
+                  : "text-leo-gray hover:text-leo-blue"
+              }`}
+            >
+              Manage Past Work
             </button>
             <button
               onClick={() => setActiveTab("literature")}
@@ -670,6 +793,191 @@ export default function AdminPage() {
               )}
             </section>
           </FadeIn>
+        ) : activeTab === "pastwork" ? (
+          <>
+            <FadeIn>
+              <section className="mb-10 rounded-lg bg-white p-6 shadow">
+                <h2 className="mb-4 text-xl font-semibold text-leo-blue">
+                  {pastWorkEditingId ? "Edit Past Work" : "Add Past Work"}
+                </h2>
+                <form
+                  onSubmit={handleSavePastWork}
+                  className="grid gap-4 sm:grid-cols-2"
+                >
+                  <div className="sm:col-span-2">
+                    <label
+                      htmlFor="pastwork-title"
+                      className="mb-1 block text-sm font-medium text-leo-gray"
+                    >
+                      Title
+                    </label>
+                    <input
+                      id="pastwork-title"
+                      type="text"
+                      required
+                      value={pastWorkForm.title}
+                      onChange={(e) =>
+                        setPastWorkForm({ ...pastWorkForm, title: e.target.value })
+                      }
+                      className="w-full rounded-md border border-leo-gray/30 px-3 py-2 text-gray-900 focus:border-leo-blue focus:outline-none focus:ring-1 focus:ring-leo-blue"
+                    />
+                  </div>
+                  <div>
+                    <label
+                      htmlFor="pastwork-year"
+                      className="mb-1 block text-sm font-medium text-leo-gray"
+                    >
+                      Year
+                    </label>
+                    <select
+                      id="pastwork-year"
+                      value={pastWorkForm.year}
+                      onChange={(e) =>
+                        setPastWorkForm({ ...pastWorkForm, year: e.target.value })
+                      }
+                      className="w-full rounded-md border border-leo-gray/30 px-3 py-2 text-gray-900 focus:border-leo-blue focus:outline-none focus:ring-1 focus:ring-leo-blue"
+                    >
+                      {pastWorkYears.map((y) => (
+                        <option key={y} value={y}>
+                          {y}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label
+                      htmlFor="pastwork-image"
+                      className="mb-1 block text-sm font-medium text-leo-gray"
+                    >
+                      Image URL
+                    </label>
+                    <input
+                      id="pastwork-image"
+                      type="url"
+                      value={pastWorkForm.imageUrl}
+                      onChange={(e) =>
+                        setPastWorkForm({
+                          ...pastWorkForm,
+                          imageUrl: e.target.value,
+                        })
+                      }
+                      placeholder="https://…"
+                      className="w-full rounded-md border border-leo-gray/30 px-3 py-2 text-gray-900 focus:border-leo-blue focus:outline-none focus:ring-1 focus:ring-leo-blue"
+                    />
+                  </div>
+                  <div className="sm:col-span-2">
+                    <label
+                      htmlFor="pastwork-description"
+                      className="mb-1 block text-sm font-medium text-leo-gray"
+                    >
+                      Description
+                    </label>
+                    <textarea
+                      id="pastwork-description"
+                      rows={4}
+                      required
+                      value={pastWorkForm.description}
+                      onChange={(e) =>
+                        setPastWorkForm({
+                          ...pastWorkForm,
+                          description: e.target.value,
+                        })
+                      }
+                      className="w-full rounded-md border border-leo-gray/30 px-3 py-2 text-gray-900 focus:border-leo-blue focus:outline-none focus:ring-1 focus:ring-leo-blue"
+                    />
+                  </div>
+                  <div className="flex gap-3 sm:col-span-2">
+                    <button
+                      type="submit"
+                      disabled={pastWorkSubmitting}
+                      className="rounded-md bg-leo-blue px-5 py-2 font-medium text-white hover:bg-leo-blue/90 disabled:opacity-50"
+                    >
+                      {pastWorkEditingId ? "Update Past Work" : "Add Past Work"}
+                    </button>
+                    {pastWorkEditingId && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPastWorkForm(emptyPastWorkForm);
+                          setPastWorkEditingId(null);
+                        }}
+                        className="rounded-md border border-leo-gray/30 px-5 py-2 font-medium text-leo-gray hover:bg-leo-gray/5"
+                      >
+                        Cancel
+                      </button>
+                    )}
+                  </div>
+                </form>
+              </section>
+            </FadeIn>
+
+            <FadeIn delay={150}>
+              <section className="rounded-lg bg-white p-6 shadow">
+                <h2 className="mb-4 text-xl font-semibold text-leo-blue">
+                  All Past Work
+                </h2>
+                {pastWorkLoading ? (
+                  <p className="text-leo-gray">Loading past work…</p>
+                ) : pastWork.length === 0 ? (
+                  <p className="text-leo-gray">
+                    No past work yet. Add some above.
+                  </p>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full text-left text-sm">
+                      <thead>
+                        <tr className="border-b border-leo-gray/20 text-leo-gray">
+                          <th className="px-3 py-2 font-medium">Title</th>
+                          <th className="px-3 py-2 font-medium">Year</th>
+                          <th className="px-3 py-2 font-medium">Description</th>
+                          <th className="px-3 py-2 font-medium">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {pastWork.map((item) => {
+                          const id = item._id || item.id || "";
+                          return (
+                            <tr
+                              key={id}
+                              className="border-b border-leo-gray/10 last:border-0"
+                            >
+                              <td className="px-3 py-2 font-medium text-gray-900">
+                                {item.title}
+                              </td>
+                              <td className="px-3 py-2 text-leo-gray">
+                                {item.year}
+                              </td>
+                              <td className="max-w-xs px-3 py-2 text-leo-gray">
+                                <span className="line-clamp-2">
+                                  {item.description}
+                                </span>
+                              </td>
+                              <td className="px-3 py-2">
+                                <div className="flex gap-2">
+                                  <button
+                                    onClick={() => handleEditPastWork(item)}
+                                    className="rounded-md bg-leo-blue/10 px-3 py-1 font-medium text-leo-blue hover:bg-leo-blue/20"
+                                  >
+                                    Edit
+                                  </button>
+                                  <button
+                                    onClick={() => id && handleDeletePastWork(id)}
+                                    className="rounded-md bg-red-50 px-3 py-1 font-medium text-red-600 hover:bg-red-100"
+                                  >
+                                    Delete
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </section>
+            </FadeIn>
+          </>
         ) : activeTab === "admins" ? (
           <FadeIn>
             <section className="rounded-lg bg-white p-6 shadow">

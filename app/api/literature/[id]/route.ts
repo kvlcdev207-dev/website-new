@@ -176,6 +176,80 @@ export async function POST(
   }
 }
 
+export async function PUT(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await params
+    const body = await request.json()
+    const { title, category, content } = body
+
+    const client = await clientPromise
+    const db = client.db("kvlc_database")
+
+    const stringId = String(id)
+    const item = await db.collection("literature").findOne({ _id: stringId } as any)
+
+    if (!item) {
+      return NextResponse.json({ error: "Literature not found" }, { status: 404 })
+    }
+
+    // Only the author or an admin may edit a piece
+    const session = await getServerSession(authOptions)
+    const role = session?.user?.role
+    const isAdmin = role === "admin" || role === "superadmin"
+    const isAuthor = Boolean(
+      session?.user?.email && item.authorEmail === session.user.email
+    )
+
+    if (!isAdmin && !isAuthor) {
+      return NextResponse.json(
+        { error: "Unauthorized. Admins or the author only." },
+        { status: 403 }
+      )
+    }
+
+    // Validate on the server, never trust the browser
+    if (!title || !String(title).trim()) {
+      return NextResponse.json({ error: "Title is required" }, { status: 400 })
+    }
+    if (!category || !["poetry", "stories", "blogs"].includes(category)) {
+      return NextResponse.json(
+        { error: "Category must be poetry, stories, or blogs" },
+        { status: 400 }
+      )
+    }
+    if (!content || !String(content).trim()) {
+      return NextResponse.json({ error: "Content is required" }, { status: 400 })
+    }
+
+    await db.collection("literature").updateOne(
+      { _id: stringId } as any,
+      {
+        $set: {
+          title: String(title).trim(),
+          category,
+          excerpt: String(content).trim().slice(0, 160),
+          fullContent: content,
+          updatedAt: new Date(),
+        },
+      }
+    )
+
+    const updated = await db
+      .collection("literature")
+      .findOne({ _id: stringId } as any)
+    return NextResponse.json({ success: true, item: updated })
+  } catch (error) {
+    console.error("Error updating literature:", error)
+    return NextResponse.json(
+      { error: "Failed to update literature" },
+      { status: 500 }
+    )
+  }
+}
+
 export async function DELETE(
   request: Request,
   { params }: { params: Promise<{ id: string }> }

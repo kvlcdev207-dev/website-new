@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { useSession, signIn } from "next-auth/react";
 import FadeIn from "@/components/FadeIn";
@@ -30,10 +30,49 @@ export default function SubmitPage() {
   const [content, setContent] = useState("");
   const [mode, setMode] = useState<"write" | "preview">("write");
   const [submitting, setSubmitting] = useState(false);
+  const [editId, setEditId] = useState<string | null>(null);
+  const [loadingItem, setLoadingItem] = useState(false);
   const [message, setMessage] = useState<{
     text: string;
     kind: "success" | "error";
   } | null>(null);
+
+  // Editing mode: /submit?id=<id> loads the existing writing
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const id = params.get("id");
+    if (!id) return;
+    setEditId(id);
+    setLoadingItem(true);
+    const fetchItem = async () => {
+      try {
+        const res = await fetch(`/api/literature/${id}`);
+        if (res.ok) {
+          const data = await res.json();
+          setTitle(data.title || "");
+          setCategory(
+            data.category === "stories" || data.category === "blogs"
+              ? data.category
+              : "poetry"
+          );
+          setContent(data.fullContent || "");
+        } else {
+          setMessage({
+            text: "Could not load this writing to edit.",
+            kind: "error",
+          });
+        }
+      } catch {
+        setMessage({
+          text: "Could not load this writing to edit.",
+          kind: "error",
+        });
+      } finally {
+        setLoadingItem(false);
+      }
+    };
+    fetchItem();
+  }, []);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -41,29 +80,48 @@ export default function SubmitPage() {
     setSubmitting(true);
     setMessage(null);
     try {
-      const res = await fetch("/api/literature/submit", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title: title.trim(),
-          category,
-          author: session.user.name || "Anonymous",
-          content: content.trim(),
-        }),
-      });
+      const payload = {
+        title: title.trim(),
+        category,
+        content: content.trim(),
+      };
+      const res = editId
+        ? await fetch(`/api/literature/${editId}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          })
+        : await fetch("/api/literature/submit", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              ...payload,
+              author: session.user.name || "Anonymous",
+            }),
+          });
       const data = await res.json().catch(() => ({}));
       if (res.ok) {
         setMessage({
-          text: data.message || "Writing published!",
+          text: data.message || (editId ? "Writing updated!" : "Writing published!"),
           kind: "success",
         });
-        setTitle("");
-        setCategory("poetry");
-        setContent("");
-        setMode("write");
-        setTimeout(() => router.push("/literature"), 1200);
+        if (!editId) {
+          setTitle("");
+          setCategory("poetry");
+          setContent("");
+          setMode("write");
+        }
+        setTimeout(
+          () => router.push(editId ? `/literature/${editId}` : "/literature"),
+          1200
+        );
       } else {
-        setMessage({ text: data.error || "Failed to publish writing.", kind: "error" });
+        setMessage({
+          text:
+            data.error ||
+            (editId ? "Failed to update writing." : "Failed to publish writing."),
+          kind: "error",
+        });
       }
     } catch {
       setMessage({
@@ -134,10 +192,12 @@ export default function SubmitPage() {
           />
           <div className="relative mx-auto max-w-4xl px-4 py-16 sm:px-6">
             <h1 className="text-3xl font-bold md:text-4xl">
-              Submit Your Writing
+              {editId ? "Edit Writing" : "Submit Your Writing"}
             </h1>
             <p className="mt-3 text-white/90">
-              Poems, stories, and blogs — in English or Nepali.
+              {editId
+                ? "Update your published piece."
+                : "Poems, stories, and blogs — in English or Nepali."}
             </p>
           </div>
         </section>
@@ -175,6 +235,12 @@ export default function SubmitPage() {
                 </div>
               )}
 
+              {loadingItem ? (
+                <p className="py-8 text-center text-leo-gray">
+                  Loading writing…
+                </p>
+              ) : (
+                <>
               {/* Title */}
               <div className="mb-6">
                 <label
@@ -272,13 +338,22 @@ export default function SubmitPage() {
                 </div>
               )}
 
+              </>
+              )}
+
               <div className="mt-8">
                 <button
                   type="submit"
                   disabled={submitting || !title.trim() || !content.trim()}
                   className="w-full rounded-lg bg-leo-blue px-6 py-3 text-base font-semibold text-white transition-all duration-300 hover:bg-leo-blue/90 hover:shadow-lg hover:shadow-leo-blue/30 disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  {submitting ? "Publishing…" : "Publish Writing"}
+                  {submitting
+                    ? editId
+                      ? "Updating…"
+                      : "Publishing…"
+                    : editId
+                      ? "Update Writing"
+                      : "Publish Writing"}
                 </button>
               </div>
             </form>

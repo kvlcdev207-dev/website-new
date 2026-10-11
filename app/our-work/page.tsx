@@ -34,24 +34,14 @@ type TimelineItem = {
   type?: string;
 };
 
-type PastWorkItem = { title: string; description: string };
-
-const pastWorkByYear: Record<string, PastWorkItem[]> = {
-  "2026/27": [
-    { title: "Tree Plantation Day", description: "Planted 200 saplings around the campus." },
-    { title: "Blood Donation Camp", description: "Organized with the Red Cross; 80 people donated." },
-    { title: "Community Library Setup", description: "Set up a reading corner for neighborhood children." },
-    { title: "Teachers&apos; Day Celebration", description: "A student-run program honoring campus teachers." },
-  ],
-  "2025/26": [
-    { title: "Food Drive for Flood Victims", description: "Collected and packed dry food kits." },
-    { title: "School Painting Project", description: "Painted murals at a local school." },
-    { title: "Health Check-Up Camp", description: "Free basic health checks with local doctors." },
-    { title: "Winter Warmth Drive", description: "Distributed blankets in the valley." },
-  ],
+type PastWorkItem = {
+  _id?: string;
+  id?: string;
+  title: string;
+  year: string;
+  description: string;
+  imageUrl?: string;
 };
-
-const years = Object.keys(pastWorkByYear).sort().reverse();
 
 /* -------------------------------------------------------------------------- */
 /*  Helpers                                                                   */
@@ -384,11 +374,34 @@ function MobileTimeline({ items }: { items: TimelineItem[] }) {
 /* -------------------------------------------------------------------------- */
 
 export default function OurWorkPage() {
-  const [selectedYear, setSelectedYear] = useState(years[0]);
+  const [selectedYear, setSelectedYear] = useState<string | null>(null);
   const [timelineItems, setTimelineItems] = useState<TimelineItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [pastWork, setPastWork] = useState<PastWorkItem[]>([]);
+  const [pastWorkLoading, setPastWorkLoading] = useState(true);
 
   const [todayISO] = useState<string>(() => toLocalISO(new Date()));
+
+  // Group past work items by Leo year, newest year first
+  const years = useMemo(() => {
+    const uniqueYears = Array.from(
+      new Set(pastWork.map((item) => item.year).filter(Boolean))
+    );
+    return uniqueYears.sort().reverse();
+  }, [pastWork]);
+
+  const activeYear =
+    selectedYear && years.includes(selectedYear) ? selectedYear : years[0];
+
+  const pastWorkByYear = useMemo(() => {
+    const grouped: Record<string, PastWorkItem[]> = {};
+    for (const item of pastWork) {
+      const year = item.year || "Unknown";
+      if (!grouped[year]) grouped[year] = [];
+      grouped[year].push(item);
+    }
+    return grouped;
+  }, [pastWork]);
 
 useEffect(() => {
     const fetchEvents = async () => {
@@ -415,6 +428,24 @@ useEffect(() => {
       }
     };
     fetchEvents();
+  }, []);
+
+  // Load past work items from the API
+  useEffect(() => {
+    const fetchPastWork = async () => {
+      try {
+        const res = await fetch("/api/past-work");
+        if (res.ok) {
+          const data = await res.json();
+          setPastWork(Array.isArray(data) ? data : []);
+        }
+      } catch (error) {
+        console.error("Failed to fetch past work:", error);
+      } finally {
+        setPastWorkLoading(false);
+      }
+    };
+    fetchPastWork();
   }, []);
 
   const rows = useMemo(() => chunk(timelineItems, ROW_SIZE), [timelineItems]);
@@ -486,43 +517,64 @@ useEffect(() => {
             <h2 className="text-2xl font-bold text-leo-blue md:text-3xl mb-6">Past work</h2>
             <p className="mb-6 text-sm text-gray-600">Choose a Leo year to see what the club did.</p>
 
-            <div className="flex flex-wrap gap-2 mb-8">
-              {years.map((year) => (
-                <button
-                  key={year}
-                  type="button"
-                  onClick={() => setSelectedYear(year)}
-                  className={
-                    selectedYear === year
-                      ? "rounded-full bg-leo-blue px-4 py-2 font-semibold text-white transition-all duration-300 hover:scale-105 hover:shadow-lg"
-                      : "rounded-full border border-leo-blue/30 px-4 py-2 font-semibold text-leo-blue transition-all duration-300 hover:bg-leo-blue/10"
-                  }
-                >
-                  {year}
-                </button>
-              ))}
-            </div>
-
-            <FadeIn delay={100}>
-              <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-                {pastWorkByYear[selectedYear].map((item) => (
-                  <FadeIn key={item.title} delay={100} className="group">
-                    <Link
-                      href="#"
-                      className="block overflow-hidden rounded-xl border border-leo-gray/10 bg-white hover:shadow-xl hover:-translate-y-2 transition-all duration-300"
-                    >
-                      <div className="flex aspect-video items-center justify-center bg-leo-yellow/20">
-                        <span className="text-sm text-leo-blue/70">Photo</span>
-                      </div>
-                      <div className="p-6">
-                        <h3 className="font-bold text-leo-blue group-hover:text-leo-blue/80 transition-colors">{item.title}</h3>
-                        <p className="mt-1 text-sm text-gray-700">{item.description}</p>
-                      </div>
-                    </Link>
-                  </FadeIn>
-                ))}
+            {pastWorkLoading ? (
+              <div className="flex justify-center py-20">
+                <div className="h-8 w-8 animate-spin rounded-full border-4 border-leo-blue border-t-transparent"></div>
               </div>
-            </FadeIn>
+            ) : years.length === 0 ? (
+              <p className="text-leo-gray">No past work added yet.</p>
+            ) : (
+              <>
+                <div className="flex flex-wrap gap-2 mb-8">
+                  {years.map((year) => (
+                    <button
+                      key={year}
+                      type="button"
+                      onClick={() => setSelectedYear(year)}
+                      className={
+                        activeYear === year
+                          ? "rounded-full bg-leo-blue px-4 py-2 font-semibold text-white transition-all duration-300 hover:scale-105 hover:shadow-lg"
+                          : "rounded-full border border-leo-blue/30 px-4 py-2 font-semibold text-leo-blue transition-all duration-300 hover:bg-leo-blue/10"
+                      }
+                    >
+                      {year}
+                    </button>
+                  ))}
+                </div>
+
+                <FadeIn delay={100}>
+                  <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+                    {(pastWorkByYear[activeYear] || []).map((item) => {
+                      const itemId = item._id || item.id;
+                      return (
+                        <FadeIn key={itemId || item.title} delay={100} className="group">
+                          <Link
+                            href={`/our-work/${itemId}`}
+                            className="block overflow-hidden rounded-xl border border-leo-gray/10 bg-white hover:shadow-xl hover:-translate-y-2 transition-all duration-300"
+                          >
+                            {item.imageUrl ? (
+                              <img
+                                src={item.imageUrl}
+                                alt={item.title}
+                                className="aspect-video w-full object-cover"
+                              />
+                            ) : (
+                              <div className="flex aspect-video items-center justify-center bg-leo-yellow/20">
+                                <span className="text-sm text-leo-blue/70">Photo</span>
+                              </div>
+                            )}
+                            <div className="p-6">
+                              <h3 className="font-bold text-leo-blue group-hover:text-leo-blue/80 transition-colors">{item.title}</h3>
+                              <p className="mt-1 text-sm text-gray-700">{item.description}</p>
+                            </div>
+                          </Link>
+                        </FadeIn>
+                      );
+                    })}
+                  </div>
+                </FadeIn>
+              </>
+            )}
           </div>
         </section>
       </FadeIn>
