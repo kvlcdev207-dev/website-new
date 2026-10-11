@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { useSession } from "next-auth/react";
 import FadeIn from "@/components/FadeIn";
+import ImageUpload from "@/components/ImageUpload";
 
 const eventTypes = ["Service", "Meeting", "Workshop", "Social", "Fundraiser", "Other"];
 
@@ -30,6 +31,7 @@ type Event = {
   type: string;
   status: string;
   description: string;
+  imageUrl?: string;
 };
 
 type FormState = {
@@ -38,6 +40,7 @@ type FormState = {
   location: string;
   type: string;
   description: string;
+  imageUrl: string;
 };
 
 const emptyForm: FormState = {
@@ -46,6 +49,7 @@ const emptyForm: FormState = {
   location: "",
   type: eventTypes[0],
   description: "",
+  imageUrl: "",
 };
 
 const impactFields = [
@@ -297,6 +301,7 @@ export default function AdminPage() {
       location: event.location,
       type: event.type,
       description: event.description,
+      imageUrl: event.imageUrl || "",
     });
     setEditingId(event._id || event.id || null);
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -656,6 +661,15 @@ export default function AdminPage() {
                     </select>
                   </div>
                   <div className="sm:col-span-2">
+                    <span className="mb-1 block text-sm font-medium text-leo-gray">
+                      Image
+                    </span>
+                    <ImageUpload
+                      imageUrl={form.imageUrl}
+                      onUpload={(url) => setForm({ ...form, imageUrl: url })}
+                    />
+                  </div>
+                  <div className="sm:col-span-2">
                     <label
                       htmlFor="event-description"
                       className="mb-1 block text-sm font-medium text-leo-gray"
@@ -885,25 +899,15 @@ export default function AdminPage() {
                       ))}
                     </select>
                   </div>
-                  <div>
-                    <label
-                      htmlFor="pastwork-image"
-                      className="mb-1 block text-sm font-medium text-leo-gray"
-                    >
-                      Image URL
-                    </label>
-                    <input
-                      id="pastwork-image"
-                      type="url"
-                      value={pastWorkForm.imageUrl}
-                      onChange={(e) =>
-                        setPastWorkForm({
-                          ...pastWorkForm,
-                          imageUrl: e.target.value,
-                        })
+                  <div className="sm:col-span-2">
+                    <span className="mb-1 block text-sm font-medium text-leo-gray">
+                      Image
+                    </span>
+                    <ImageUpload
+                      imageUrl={pastWorkForm.imageUrl}
+                      onUpload={(url) =>
+                        setPastWorkForm({ ...pastWorkForm, imageUrl: url })
                       }
-                      placeholder="https://…"
-                      className="w-full rounded-md border border-leo-gray/30 px-3 py-2 text-gray-900 focus:border-leo-blue focus:outline-none focus:ring-1 focus:ring-leo-blue"
                     />
                   </div>
                   <div className="sm:col-span-2">

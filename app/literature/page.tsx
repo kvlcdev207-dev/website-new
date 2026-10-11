@@ -1,21 +1,18 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { AnimatePresence, MotionConfig, motion } from "framer-motion";
 import FadeIn from "@/components/FadeIn";
 import TopLiteratureSlider from "@/components/TopLiteratureSlider";
-import { categoryColors, categoryLabels, type Category } from "@/data/literature";
+import { categoryLabels, type Category } from "@/data/literature";
 
 const EASE = [0.22, 1, 0.36, 1] as const;
 const filters: Category[] = ["all", "poetry", "stories", "blogs"];
 
-const initials = (name: string) =>
-  name
-    .split(" ")
-    .map((n) => n[0])
-    .join("")
-    .slice(0, 2);
+/** Rows shown at first, and how many rows each "Show more" click reveals. */
+const INITIAL_ROWS = 2;
+const ROWS_PER_CLICK = 2;
 
 // Shape of a writing document stored in the database
 type DbWriting = {
@@ -29,10 +26,100 @@ type DbWriting = {
   comments?: unknown[];
 };
 
+/* -------------------------------------------------------------------------- */
+/*  Helpers                                                                   */
+/* -------------------------------------------------------------------------- */
+
+const initialsOf = (name: string) =>
+  (name ?? "")
+    .split(" ")
+    .filter(Boolean)
+    .map((n) => n[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
+
+// Same tones as the home page cards (full class names so Tailwind can see them)
+const TONES: Record<DbWriting["category"], { bg: string; tag: string; quote: string }> = {
+  poetry: { bg: "to-leo-blue/10", tag: "bg-leo-blue/10 text-leo-blue", quote: "text-leo-blue" },
+  stories: { bg: "to-leo-yellow/20", tag: "bg-leo-yellow/25 text-leo-gray", quote: "text-leo-yellow" },
+  blogs: { bg: "to-leo-green/10", tag: "bg-leo-green/10 text-leo-green", quote: "text-leo-green" },
+};
+
+/** Columns currently shown by the grid (matches Tailwind's sm / lg breakpoints). */
+function useColumns() {
+  const [cols, setCols] = useState(3);
+  useEffect(() => {
+    const lg = window.matchMedia("(min-width: 1024px)");
+    const sm = window.matchMedia("(min-width: 640px)");
+    const update = () => setCols(lg.matches ? 3 : sm.matches ? 2 : 1);
+    update();
+    lg.addEventListener("change", update);
+    sm.addEventListener("change", update);
+    return () => {
+      lg.removeEventListener("change", update);
+      sm.removeEventListener("change", update);
+    };
+  }, []);
+  return cols;
+}
+
+/* -------------------------------------------------------------------------- */
+/*  Card (same design as the home page literature card)                       */
+/* -------------------------------------------------------------------------- */
+
+function WritingCard({ writing }: { writing: DbWriting }) {
+  const tone = TONES[writing.category] ?? TONES.poetry;
+
+  return (
+    <Link
+      href={`/literature/${writing._id}`}
+      className={`group/card relative flex h-full flex-col overflow-hidden rounded-2xl border border-leo-gray/10 bg-gradient-to-br from-white via-white ${tone.bg} p-7 shadow-sm transition-all duration-300 hover:-translate-y-1.5 hover:border-leo-blue/20 hover:shadow-xl hover:shadow-leo-blue/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-leo-blue/50`}
+    >
+      {/* Decorative quote mark */}
+      <svg
+        aria-hidden
+        className={`absolute right-5 top-5 h-16 w-16 opacity-10 transition-all duration-500 group-hover/card:-rotate-6 group-hover/card:scale-110 group-hover/card:opacity-20 ${tone.quote}`}
+        viewBox="0 0 24 24"
+        fill="currentColor"
+      >
+        <path d="M9.4 4C5.8 5.4 3 8.9 3 13.2V20h7.5v-7.5H6.6c.2-2.3 1.5-4 3.6-5L9.4 4zm10 0c-3.6 1.4-6.4 4.9-6.4 9.2V20h7.5v-7.5h-3.9c.2-2.3 1.5-4 3.6-5L19.4 4z" />
+      </svg>
+
+      <span className={`relative inline-flex w-fit rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wider ${tone.tag}`}>
+        {categoryLabels[writing.category] ?? writing.category}
+      </span>
+
+      <h3 className="relative mt-5 line-clamp-2 text-xl font-bold leading-snug text-leo-blue">{writing.title}</h3>
+      <p className="relative mt-3 line-clamp-4 flex-1 text-sm leading-relaxed text-gray-600">{writing.excerpt}</p>
+
+      <div className="relative mt-6 flex items-center gap-3 border-t border-leo-gray/10 pt-5">
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-leo-blue/10 transition-colors duration-300 group-hover/card:bg-leo-blue">
+          <span className="text-xs font-bold text-leo-blue transition-colors duration-300 group-hover/card:text-white">
+            {initialsOf(writing.author)}
+          </span>
+        </div>
+        <div className="min-w-0">
+          <p className="truncate text-sm font-semibold text-gray-800">{writing.author}</p>
+          {writing.date && <p className="text-xs text-gray-500">{writing.date}</p>}
+        </div>
+      </div>
+    </Link>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/*  Page                                                                      */
+/* -------------------------------------------------------------------------- */
+
 export default function LiteraturePage() {
   const [activeCategory, setActiveCategory] = useState<Category>("all");
   const [allWritings, setAllWritings] = useState<DbWriting[]>([]);
   const [loading, setLoading] = useState(true);
+  const [visibleRows, setVisibleRows] = useState(INITIAL_ROWS);
+
+  const columns = useColumns();
+  const gridTopRef = useRef<HTMLDivElement | null>(null);
 
   // Fetch all writings from the database on mount
   useEffect(() => {
@@ -64,6 +151,25 @@ export default function LiteraturePage() {
     for (const w of allWritings) map[w.category] = (map[w.category] ?? 0) + 1;
     return map;
   }, [allWritings]);
+
+  // Rows → cards, so "2 rows" stays true on every screen size
+  const initialCount = INITIAL_ROWS * columns;
+  const step = ROWS_PER_CLICK * columns;
+  const visibleCount = visibleRows * columns;
+  const visibleWritings = filteredWritings.slice(0, visibleCount);
+  const remaining = Math.max(0, filteredWritings.length - visibleCount);
+  const canCollapse = remaining === 0 && filteredWritings.length > initialCount;
+
+  const changeCategory = (cat: Category) => {
+    setActiveCategory(cat);
+    setVisibleRows(INITIAL_ROWS); // every filter starts back at 2 rows
+  };
+
+  const showMore = () => setVisibleRows((r) => r + ROWS_PER_CLICK);
+  const showLess = () => {
+    setVisibleRows(INITIAL_ROWS);
+    gridTopRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
 
   return (
     <MotionConfig reducedMotion="user">
@@ -108,7 +214,7 @@ export default function LiteraturePage() {
                   <button
                     key={cat}
                     type="button"
-                    onClick={() => setActiveCategory(cat)}
+                    onClick={() => changeCategory(cat)}
                     aria-pressed={selected}
                     className="relative rounded-full px-5 py-2 text-sm font-medium focus:outline-none focus-visible:ring-2 focus-visible:ring-leo-blue/40"
                   >
@@ -143,101 +249,79 @@ export default function LiteraturePage() {
 
       {/* Writings grid */}
       <section className="bg-white py-12 sm:py-16">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+        <div ref={gridTopRef} className="mx-auto max-w-7xl scroll-mt-24 px-4 sm:px-6 lg:px-8">
           {loading ? (
             <p className="py-16 text-center text-leo-gray">Loading writings…</p>
           ) : (
-          <>
-          <ul className="relative grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-            <AnimatePresence mode="popLayout">
-              {filteredWritings.map((writing, i) => (
-                <motion.li
-                  key={writing._id}
-                  layout
-                  initial={{ opacity: 0, y: 24, scale: 0.97 }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.96 }}
-                  transition={{ duration: 0.4, ease: EASE, delay: Math.min(i, 6) * 0.04 }}
-                >
-                  <Link
-                    href={`/literature/${writing._id}`}
-                    className="group flex h-full flex-col rounded-2xl border border-leo-gray/10 bg-white p-6 shadow-sm transition-all duration-300 hover:-translate-y-1.5 hover:border-leo-blue/20 hover:shadow-xl hover:shadow-leo-blue/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-leo-blue/40"
+            <>
+              <ul className="relative grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+                <AnimatePresence mode="popLayout">
+                  {visibleWritings.map((writing, i) => (
+                    <motion.li
+                      key={writing._id}
+                      layout
+                      initial={{ opacity: 0, y: 24, scale: 0.97 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, scale: 0.96 }}
+                      transition={{ duration: 0.45, ease: EASE, delay: Math.min(i % step, 6) * 0.05 }}
+                    >
+                      <WritingCard writing={writing} />
+                    </motion.li>
+                  ))}
+                </AnimatePresence>
+              </ul>
+
+              {/* Empty state */}
+              <AnimatePresence>
+                {filteredWritings.length === 0 && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 12 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0 }}
+                    className="py-16 text-center"
                   >
-                    <div className="mb-4 flex items-center justify-between">
-                      <span className={`inline-block rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wider ${categoryColors[writing.category]}`}>
-                        {categoryLabels[writing.category]}
-                      </span>
-                      <span className="flex h-8 w-8 -translate-x-1 items-center justify-center rounded-full bg-leo-blue/5 text-leo-blue opacity-0 transition-all duration-300 group-hover:translate-x-0 group-hover:opacity-100">
-                        <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                          <path d="M5 12h14M13 6l6 6-6 6" />
-                        </svg>
-                      </span>
-                    </div>
+                    <p className="text-leo-gray">No writings found in this category yet.</p>
+                    <p className="mt-2 text-sm text-leo-gray/60">Be the first to share your writing!</p>
+                  </motion.div>
+                )}
+              </AnimatePresence>
 
-                    <h3 className="mb-3 line-clamp-2 text-lg font-bold text-leo-blue">{writing.title}</h3>
-                    <p className="mb-5 line-clamp-3 flex-1 text-sm leading-relaxed text-leo-gray/80">{writing.excerpt}</p>
+              {/* Show more / Show less */}
+              {(remaining > 0 || canCollapse) && (
+                <div className="mt-12 flex flex-col items-center gap-3">
+                  <motion.button
+                    type="button"
+                    onClick={remaining > 0 ? showMore : showLess}
+                    whileHover={{ scale: 1.04 }}
+                    whileTap={{ scale: 0.97 }}
+                    transition={{ type: "spring", stiffness: 400, damping: 20 }}
+                    aria-expanded={remaining === 0}
+                    className="group inline-flex items-center gap-2 rounded-full border border-leo-blue/20 bg-white px-7 py-3 text-sm font-semibold text-leo-blue shadow-sm transition-all duration-300 hover:border-leo-blue hover:bg-leo-blue hover:text-white hover:shadow-lg hover:shadow-leo-blue/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-leo-blue/50"
+                  >
+                    {remaining > 0 ? "Show more writings" : "Show less"}
+                    <svg
+                      className={`h-4 w-4 transition-transform duration-300 ${
+                        remaining > 0 ? "group-hover:translate-y-0.5" : "rotate-180 group-hover:-translate-y-0.5"
+                      }`}
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth={2.2}
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      aria-hidden
+                    >
+                      <path d="M6 9l6 6 6-6" />
+                    </svg>
+                  </motion.button>
 
-                    <div className="flex items-center justify-between border-t border-leo-gray/10 pt-4">
-                      <div className="flex items-center gap-2.5">
-                        <div className="flex h-9 w-9 items-center justify-center rounded-full bg-leo-blue/10 transition-colors duration-300 group-hover:bg-leo-blue">
-                          <span className="text-xs font-bold text-leo-blue transition-colors duration-300 group-hover:text-white">
-                            {initials(writing.author)}
-                          </span>
-                        </div>
-                        <div>
-                          <p className="text-sm font-medium text-leo-gray">{writing.author}</p>
-                          <p className="text-xs text-leo-gray/60">{writing.date}</p>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-3 text-xs text-leo-gray/60">
-                        <span className="flex items-center gap-1">
-                          <svg className="h-3.5 w-3.5 text-leo-red/70" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-                            <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.14-1.14a5.5 5.5 0 0 0-7.78 7.78L12 21.23l7.78-7.78a5.5 5.5 0 0 0 0-7.78z" />
-                          </svg>
-                          {writing.likes ?? 0}
-                        </span>
-                        <span className="flex items-center gap-1">
-                          <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-                          </svg>
-                          {writing.comments?.length ?? 0}
-                        </span>
-                      </div>
-                    </div>
-                  </Link>
-                </motion.li>
-              ))}
-            </AnimatePresence>
-          </ul>
-
-          {/* Empty state */}
-          <AnimatePresence>
-            {filteredWritings.length === 0 && (
-              <motion.div
-                initial={{ opacity: 0, y: 12 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0 }}
-                className="py-16 text-center"
-              >
-                <p className="text-leo-gray">No writings found in this category yet.</p>
-                <p className="mt-2 text-sm text-leo-gray/60">Be the first to share your writing!</p>
-              </motion.div>
-            )}
-          </AnimatePresence>
-          </>
+                  <p className="text-xs tabular-nums text-leo-gray/60">
+                    Showing {Math.min(visibleCount, filteredWritings.length)} of {filteredWritings.length}
+                  </p>
+                </div>
+              )}
+            </>
           )}
-
-          <div className="mt-10 text-center">
-            <Link
-              href="#"
-              className="group inline-flex items-center gap-2 text-sm font-semibold text-leo-blue transition-colors hover:text-leo-blue/80"
-            >
-              View All Writings
-              <svg className="h-4 w-4 transition-transform duration-300 group-hover:translate-x-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                <path d="M5 12h14M13 6l6 6-6 6" />
-              </svg>
-            </Link>
-          </div>
         </div>
       </section>
 

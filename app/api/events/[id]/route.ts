@@ -11,7 +11,7 @@ export async function PUT(
     const body = await request.json()
     console.log("Updating event:", id, body)
     
-    const { title, date, location, type, description } = body
+    const { title, date, location, type, description, imageUrl } = body
 
     if (!title || !date || !location || !type) {
       console.error("Missing required fields:", { title, date, location, type })
@@ -46,6 +46,7 @@ export async function PUT(
           status,
           type,
           description: description || "",
+          imageUrl: (imageUrl ?? "").trim(),
           updatedAt: new Date(),
         },
       },

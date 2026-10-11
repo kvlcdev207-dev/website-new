@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { AnimatePresence, MotionConfig, motion, type Variants } from "framer-motion";
 import FadeIn from "@/components/FadeIn";
@@ -12,14 +12,14 @@ import FadeIn from "@/components/FadeIn";
 type Status = "past" | "today" | "upcoming";
 
 type ApiEvent = {
-  id: string;
+  id?: string;
   _id?: string;
   title: string;
   date: string;
-  location: string;
-  description: string;
-  type: string;
-  status: string;
+  location?: string;
+  description?: string;
+  type?: string;
+  status?: string;
 };
 
 type TimelineItem = {
@@ -30,8 +30,6 @@ type TimelineItem = {
   description: string;
   kind: "event" | "marker";
   status: Status;
-  date?: string;
-  type?: string;
 };
 
 type PastWorkItem = {
@@ -51,6 +49,10 @@ const ROW_SIZE = 5;
 const STEP = 100 / ROW_SIZE;
 const EASE = [0.22, 1, 0.36, 1] as const;
 
+/** Past-work grid: rows shown at first, and rows revealed per "Show more" click. */
+const INITIAL_ROWS = 2;
+const ROWS_PER_CLICK = 2;
+
 const formatDate = (iso: string) =>
   new Date(`${iso}T00:00:00Z`).toLocaleDateString("en-US", {
     month: "short",
@@ -59,20 +61,30 @@ const formatDate = (iso: string) =>
     timeZone: "UTC",
   });
 
+// The visitor's local calendar day (never the UTC day — those differ in Nepal before 5:45am)
 const toLocalISO = (d: Date) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
-function buildTimeline(items: ApiEvent[], todayISO: string): TimelineItem[] {
-  const itemsWithStatus: TimelineItem[] = items.map((e: ApiEvent) => {
-    const iso = e.date ? e.date.split("T")[0] : "";
-    let status: "past" | "today" | "upcoming";
-    if (iso && iso < new Date().toISOString().split("T")[0]) status = "past";
-    else if (iso === new Date().toISOString().split("T")[0]) status = "today";
-    else status = "upcoming";
-    return { ...e, iso, status, kind: "event" as const };
-  });
+function buildTimeline(events: ApiEvent[], todayISO: string): TimelineItem[] {
+  const items: TimelineItem[] = events
+    .map((e, index) => {
+      const iso = e.date ? e.date.split("T")[0] : "";
+      const status: Status = iso < todayISO ? "past" : iso === todayISO ? "today" : "upcoming";
+      return {
+        id: e.id ?? e._id ?? `event-${index}`,
+        iso,
+        title: e.title,
+        location: e.location ?? "",
+        description: e.description ?? "",
+        kind: "event" as const,
+        status,
+      };
+    })
+    .filter((e) => e.iso) // an event without a date can't be placed on a timeline
+    .sort((a, b) => a.iso.localeCompare(b.iso));
 
-  if (!itemsWithStatus.some((i) => i.status === "today")) {
+  // Nothing happening today? Drop a "Today" marker in the right place.
+  if (!items.some((i) => i.status === "today")) {
     const marker: TimelineItem = {
       id: "today-marker",
       kind: "marker",
@@ -81,19 +93,35 @@ function buildTimeline(items: ApiEvent[], todayISO: string): TimelineItem[] {
       title: "Today",
       location: "",
       description: "",
-      date: todayISO,
-      type: "marker",
     };
-    const at = itemsWithStatus.findIndex((i) => i.iso && i.iso > todayISO);
-    itemsWithStatus.splice(at === -1 ? itemsWithStatus.length : at, 0, marker);
+    const at = items.findIndex((i) => i.iso > todayISO);
+    items.splice(at === -1 ? items.length : at, 0, marker);
   }
-  return itemsWithStatus;
+  return items;
 }
 
 function chunk<T>(arr: T[], size: number): T[][] {
   const out: T[][] = [];
   for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
   return out;
+}
+
+/** Columns currently shown by the grid (matches Tailwind's sm / lg breakpoints). */
+function useColumns() {
+  const [cols, setCols] = useState(3);
+  useEffect(() => {
+    const lg = window.matchMedia("(min-width: 1024px)");
+    const sm = window.matchMedia("(min-width: 640px)");
+    const update = () => setCols(lg.matches ? 3 : sm.matches ? 2 : 1);
+    update();
+    lg.addEventListener("change", update);
+    sm.addEventListener("change", update);
+    return () => {
+      lg.removeEventListener("change", update);
+      sm.removeEventListener("change", update);
+    };
+  }, []);
+  return cols;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -110,24 +138,23 @@ const nodeVariants: Variants = {
   show: { opacity: 1, scale: 1, y: 0, transition: { type: "spring", stiffness: 260, damping: 20 } },
 };
 
-const gridVariants: Variants = {
-  hidden: {},
-  show: { transition: { staggerChildren: 0.08 } },
-  exit: { opacity: 0, transition: { duration: 0.15 } },
-};
-
-const cardVariants: Variants = {
-  hidden: { opacity: 0, y: 24 },
-  show: { opacity: 1, y: 0, transition: { duration: 0.5, ease: EASE } },
-};
-
-const viewport = { once: true, amount: 0.2 } as const;
-
 const STATUS = {
   past: { dot: "bg-leo-green", glow: "shadow-leo-green/60", text: "text-leo-green", label: "Completed", ring: "ring-leo-green/30" },
   today: { dot: "bg-leo-yellow", glow: "shadow-leo-yellow/70", text: "text-leo-yellow", label: "Today", ring: "ring-leo-yellow/50" },
   upcoming: { dot: "bg-leo-blue", glow: "shadow-leo-blue/60", text: "text-leo-blue", label: "Upcoming", ring: "ring-leo-blue/30" },
 } as const;
+
+/* -------------------------------------------------------------------------- */
+/*  Small shared pieces                                                       */
+/* -------------------------------------------------------------------------- */
+
+function Spinner() {
+  return (
+    <div className="flex justify-center py-20" role="status" aria-label="Loading">
+      <div className="h-8 w-8 animate-spin rounded-full border-4 border-leo-blue border-t-transparent" />
+    </div>
+  );
+}
 
 /* -------------------------------------------------------------------------- */
 /*  Timeline pieces                                                           */
@@ -146,7 +173,7 @@ function PulseRing({ className }: { className: string }) {
 
 function TimelineNode({ item, column }: { item: TimelineItem; column: number }) {
   const [active, setActive] = useState(false);
-  const s = STATUS[item.status as keyof typeof STATUS];
+  const s = STATUS[item.status];
   const isMarker = item.kind === "marker";
 
   const align =
@@ -244,7 +271,8 @@ function TimelineRow({
       initial="hidden"
       whileInView="show"
       viewport={viewport}
-      className={`relative grid items-start ${isLast ? "" : "pb-24"}`}
+      // The hovered row lifts above its neighbours so its tooltip is never covered by the next row
+      className={`relative grid items-start hover:z-30 focus-within:z-30 ${isLast ? "" : "pb-24"}`}
       style={{ gridTemplateColumns: `repeat(${ROW_SIZE}, minmax(0, 1fr))` }}
     >
       {items.length > 1 && (
@@ -308,7 +336,7 @@ function MobileTimeline({ items }: { items: TimelineItem[] }) {
   return (
     <ol className="relative pl-10">
       {items.map((item, i) => {
-        const s = STATUS[item.status as keyof typeof STATUS];
+        const s = STATUS[item.status];
         const next = items[i + 1];
         const segmentDone = item.status !== "upcoming" && next && next.status !== "upcoming";
         const isMarker = item.kind === "marker";
@@ -370,6 +398,69 @@ function MobileTimeline({ items }: { items: TimelineItem[] }) {
 }
 
 /* -------------------------------------------------------------------------- */
+/*  Past work card (same design as the home page)                             */
+/* -------------------------------------------------------------------------- */
+
+function CoverImage({ src, alt }: { src?: string; alt: string }) {
+  const [failed, setFailed] = useState(false);
+  const showImage = Boolean(src) && !failed;
+
+  return (
+    <div className="relative aspect-[16/10] overflow-hidden">
+      {showImage ? (
+        <img
+          src={src}
+          alt={alt}
+          loading="lazy"
+          onError={() => setFailed(true)}
+          className="h-full w-full object-cover transition-transform duration-700 group-hover/card:scale-105"
+        />
+      ) : (
+        // Brand gradient + dotted texture + camera badge, so a missing photo looks intentional
+        <div
+          aria-hidden
+          className="relative flex h-full w-full items-center justify-center overflow-hidden bg-gradient-to-br from-leo-blue via-leo-blue/80 to-leo-yellow transition-transform duration-700 group-hover/card:scale-105"
+        >
+          <div className="absolute inset-0 opacity-60 [background-image:radial-gradient(rgba(255,255,255,0.35)_1px,transparent_1px)] [background-size:18px_18px]" />
+          <div className="absolute -left-10 -top-10 h-40 w-40 rounded-full bg-white/20 blur-2xl" />
+          <div className="absolute -bottom-12 -right-8 h-44 w-44 rounded-full bg-leo-yellow/50 blur-2xl" />
+          <div className="relative flex h-16 w-16 items-center justify-center rounded-2xl bg-white/20 text-white shadow-lg ring-1 ring-white/40 backdrop-blur-sm transition-transform duration-500 group-hover/card:-rotate-6 group-hover/card:scale-110">
+            <svg className="h-8 w-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+              <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+              <circle cx="12" cy="13" r="4" />
+            </svg>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PastWorkCard({ item, href }: { item: PastWorkItem; href: string }) {
+  return (
+    <Link
+      href={href}
+      className="group/card flex h-full flex-col overflow-hidden rounded-2xl border border-leo-gray/10 bg-white shadow-sm transition-all duration-300 hover:-translate-y-1.5 hover:border-leo-blue/20 hover:shadow-xl hover:shadow-leo-blue/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-leo-blue/50"
+    >
+      <CoverImage src={item.imageUrl} alt={item.title} />
+      <div className="flex flex-1 flex-col p-6">
+        {item.year && (
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-leo-green">Leo Year {item.year}</p>
+        )}
+        <h3 className="line-clamp-2 text-lg font-bold text-leo-blue">{item.title}</h3>
+        <p className="mt-2 line-clamp-3 text-sm leading-relaxed text-gray-600">{item.description}</p>
+        <span className="mt-auto inline-flex items-center gap-1.5 pt-5 text-sm font-semibold text-leo-blue">
+          View project
+          <svg className="h-4 w-4 transition-transform duration-300 group-hover/card:translate-x-1" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <path d="M5 12h14M13 6l6 6-6 6" />
+          </svg>
+        </span>
+      </div>
+    </Link>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
 /*  Page                                                                      */
 /* -------------------------------------------------------------------------- */
 
@@ -379,19 +470,18 @@ export default function OurWorkPage() {
   const [loading, setLoading] = useState(true);
   const [pastWork, setPastWork] = useState<PastWorkItem[]>([]);
   const [pastWorkLoading, setPastWorkLoading] = useState(true);
+  const [visibleRows, setVisibleRows] = useState(INITIAL_ROWS);
 
-  const [todayISO] = useState<string>(() => toLocalISO(new Date()));
+  const columns = useColumns();
+  const gridTopRef = useRef<HTMLDivElement | null>(null);
 
   // Group past work items by Leo year, newest year first
   const years = useMemo(() => {
-    const uniqueYears = Array.from(
-      new Set(pastWork.map((item) => item.year).filter(Boolean))
-    );
+    const uniqueYears = Array.from(new Set(pastWork.map((item) => item.year).filter(Boolean)));
     return uniqueYears.sort().reverse();
   }, [pastWork]);
 
-  const activeYear =
-    selectedYear && years.includes(selectedYear) ? selectedYear : years[0];
+  const activeYear = selectedYear && years.includes(selectedYear) ? selectedYear : (years[0] ?? "");
 
   const pastWorkByYear = useMemo(() => {
     const grouped: Record<string, PastWorkItem[]> = {};
@@ -403,23 +493,14 @@ export default function OurWorkPage() {
     return grouped;
   }, [pastWork]);
 
-useEffect(() => {
+  useEffect(() => {
     const fetchEvents = async () => {
       try {
         const res = await fetch("/api/events");
         if (res.ok) {
           const data = await res.json();
-          const items: ApiEvent[] = data.map((event: ApiEvent) => {
-            const iso = event.date ? event.date.split("T")[0] : "";
-            let status: "past" | "today" | "upcoming";
-            if (iso && iso < new Date().toISOString().split("T")[0]) status = "past";
-            else if (iso === new Date().toISOString().split("T")[0]) status = "today";
-            else status = "upcoming";
-            return { ...event, iso: event.date?.split("T")[0] || "", status, kind: "event" as const };
-          });
-          const todayISO = new Date().toISOString().split("T")[0];
-          const timelineItems = buildTimeline(items, todayISO);
-          setTimelineItems(timelineItems);
+          const events: ApiEvent[] = Array.isArray(data) ? data : [];
+          setTimelineItems(buildTimeline(events, toLocalISO(new Date())));
         }
       } catch (error) {
         console.error("Failed to fetch events:", error);
@@ -450,8 +531,28 @@ useEffect(() => {
 
   const rows = useMemo(() => chunk(timelineItems, ROW_SIZE), [timelineItems]);
 
+  // Past-work paging: "rows" → cards, so two rows stays true at every screen size
+  const yearItems = pastWorkByYear[activeYear] ?? [];
+  const initialCount = INITIAL_ROWS * columns;
+  const step = ROWS_PER_CLICK * columns;
+  const visibleCount = visibleRows * columns;
+  const visibleItems = yearItems.slice(0, visibleCount);
+  const remaining = Math.max(0, yearItems.length - visibleCount);
+  const canCollapse = remaining === 0 && yearItems.length > initialCount;
+
+  const changeYear = (year: string) => {
+    setSelectedYear(year);
+    setVisibleRows(INITIAL_ROWS); // every year starts back at 2 rows
+  };
+  const showMore = () => setVisibleRows((r) => r + ROWS_PER_CLICK);
+  const showLess = () => {
+    setVisibleRows(INITIAL_ROWS);
+    gridTopRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+
   return (
     <MotionConfig reducedMotion="user">
+      {/* Hero */}
       <FadeIn>
         <section className="bg-leo-blue text-white">
           <div className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8 lg:py-20">
@@ -461,25 +562,31 @@ useEffect(() => {
         </section>
       </FadeIn>
 
-      <FadeIn delay={100}>
-        <section className="py-16 sm:py-24 bg-white">
-          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-            <FadeIn>
-              <div className="mb-16 text-center">
-                <h2 className="text-3xl font-bold text-leo-blue md:text-4xl">This Year&apos;s Timeline</h2>
-                <p className="mx-auto mt-4 max-w-2xl text-leo-gray">
-                  Hover over or focus any dot to reveal event details.
-                </p>
-              </div>
-            </FadeIn>
+      {/*
+        Timeline.
+        Note: sections are NOT wrapped in <FadeIn> any more. Fading a whole <section> also fades its
+        background, which showed up as a blank white band until it scrolled into view.
+      */}
+      <section className="bg-white py-16 sm:py-24">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+          <FadeIn>
+            <div className="mb-12 text-center sm:mb-16">
+              <h2 className="text-3xl font-bold text-leo-blue md:text-4xl">This Year&apos;s Timeline</h2>
+              <p className="mx-auto mt-4 max-w-2xl text-leo-gray">
+                Hover over or focus any dot to reveal event details.
+              </p>
+            </div>
+          </FadeIn>
 
-            <div className="hidden min-h-[480px] md:block">
-              {loading ? (
-                <div className="flex justify-center py-20">
-                  <div className="h-8 w-8 animate-spin rounded-full border-4 border-leo-blue border-t-transparent"></div>
-                </div>
-              ) : (
-                <div className="py-8">
+          {/* Desktop snake timeline — height now follows the content (no forced min-height) */}
+          <div className="hidden md:block">
+            {loading ? (
+              <Spinner />
+            ) : rows.length === 0 ? (
+              <p className="py-10 text-center text-leo-gray">No events scheduled yet — check back soon.</p>
+            ) : (
+              <>
+                <div className="py-4">
                   {rows.map((row, i) => (
                     <TimelineRow
                       key={i}
@@ -490,94 +597,146 @@ useEffect(() => {
                     />
                   ))}
                 </div>
-              )}
 
-              <FadeIn delay={300}>
-                <div className="mt-8 flex flex-wrap items-center justify-center gap-6">
-                  {(["past", "today", "upcoming"] as const).map((key) => (
-                    <span key={key} className="flex items-center gap-2 text-leo-gray">
-                      <span className={`h-3 w-3 rounded-full ${STATUS[key as keyof typeof STATUS].dot}`} />
-                      <span className="text-sm font-medium">{STATUS[key as keyof typeof STATUS].label}</span>
-                    </span>
-                  ))}
-                </div>
-              </FadeIn>
-            </div>
-
-            <div className="md:hidden">
-              <MobileTimeline items={timelineItems} />
-            </div>
-          </div>
-        </section>
-      </FadeIn>
-
-      <FadeIn delay={200}>
-        <section className="py-16 sm:py-20 bg-leo-yellow/5">
-          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-            <h2 className="text-2xl font-bold text-leo-blue md:text-3xl mb-6">Past work</h2>
-            <p className="mb-6 text-sm text-gray-600">Choose a Leo year to see what the club did.</p>
-
-            {pastWorkLoading ? (
-              <div className="flex justify-center py-20">
-                <div className="h-8 w-8 animate-spin rounded-full border-4 border-leo-blue border-t-transparent"></div>
-              </div>
-            ) : years.length === 0 ? (
-              <p className="text-leo-gray">No past work added yet.</p>
-            ) : (
-              <>
-                <div className="flex flex-wrap gap-2 mb-8">
-                  {years.map((year) => (
-                    <button
-                      key={year}
-                      type="button"
-                      onClick={() => setSelectedYear(year)}
-                      className={
-                        activeYear === year
-                          ? "rounded-full bg-leo-blue px-4 py-2 font-semibold text-white transition-all duration-300 hover:scale-105 hover:shadow-lg"
-                          : "rounded-full border border-leo-blue/30 px-4 py-2 font-semibold text-leo-blue transition-all duration-300 hover:bg-leo-blue/10"
-                      }
-                    >
-                      {year}
-                    </button>
-                  ))}
-                </div>
-
-                <FadeIn delay={100}>
-                  <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-                    {(pastWorkByYear[activeYear] || []).map((item) => {
-                      const itemId = item._id || item.id;
-                      return (
-                        <FadeIn key={itemId || item.title} delay={100} className="group">
-                          <Link
-                            href={`/our-work/${itemId}`}
-                            className="block overflow-hidden rounded-xl border border-leo-gray/10 bg-white hover:shadow-xl hover:-translate-y-2 transition-all duration-300"
-                          >
-                            {item.imageUrl ? (
-                              <img
-                                src={item.imageUrl}
-                                alt={item.title}
-                                className="aspect-video w-full object-cover"
-                              />
-                            ) : (
-                              <div className="flex aspect-video items-center justify-center bg-leo-yellow/20">
-                                <span className="text-sm text-leo-blue/70">Photo</span>
-                              </div>
-                            )}
-                            <div className="p-6">
-                              <h3 className="font-bold text-leo-blue group-hover:text-leo-blue/80 transition-colors">{item.title}</h3>
-                              <p className="mt-1 text-sm text-gray-700">{item.description}</p>
-                            </div>
-                          </Link>
-                        </FadeIn>
-                      );
-                    })}
+                <FadeIn delay={300}>
+                  <div className="mt-8 flex flex-wrap items-center justify-center gap-6">
+                    {(["past", "today", "upcoming"] as const).map((key) => (
+                      <span key={key} className="flex items-center gap-2 text-leo-gray">
+                        <span className={`h-3 w-3 rounded-full ${STATUS[key].dot}`} />
+                        <span className="text-sm font-medium">{STATUS[key].label}</span>
+                      </span>
+                    ))}
                   </div>
                 </FadeIn>
               </>
             )}
           </div>
-        </section>
-      </FadeIn>
+
+          {/* Mobile timeline */}
+          <div className="md:hidden">
+            {loading ? (
+              <Spinner />
+            ) : timelineItems.length === 0 ? (
+              <p className="py-6 text-center text-leo-gray">No events scheduled yet — check back soon.</p>
+            ) : (
+              <MobileTimeline items={timelineItems} />
+            )}
+          </div>
+        </div>
+      </section>
+
+      {/* Past work */}
+      <section className="bg-leo-yellow/5 py-16 sm:py-24">
+        <div ref={gridTopRef} className="mx-auto max-w-7xl scroll-mt-24 px-4 sm:px-6 lg:px-8">
+          <FadeIn>
+            <div className="mb-10 text-center">
+              <h2 className="text-3xl font-bold text-leo-blue md:text-4xl">Past work</h2>
+              <p className="mx-auto mt-4 max-w-2xl text-leo-gray">Choose a Leo year to see what the club did.</p>
+            </div>
+          </FadeIn>
+
+          {pastWorkLoading ? (
+            <Spinner />
+          ) : years.length === 0 ? (
+            <p className="py-10 text-center text-leo-gray">No past work added yet.</p>
+          ) : (
+            <>
+              {/* Year tabs with a sliding pill */}
+              <div className="mb-12 flex justify-center">
+                <div
+                  role="tablist"
+                  aria-label="Leo year"
+                  className="inline-flex flex-wrap justify-center rounded-full border border-leo-blue/15 bg-white p-1.5 shadow-sm"
+                >
+                  {years.map((year) => {
+                    const selected = activeYear === year;
+                    return (
+                      <button
+                        key={year}
+                        type="button"
+                        role="tab"
+                        aria-selected={selected}
+                        onClick={() => changeYear(year)}
+                        className="relative rounded-full px-6 py-2.5 font-semibold focus:outline-none focus-visible:ring-2 focus-visible:ring-leo-blue/40"
+                      >
+                        {selected && (
+                          <motion.span
+                            layoutId="year-pill"
+                            className="absolute inset-0 rounded-full bg-leo-blue shadow-md"
+                            transition={{ type: "spring", stiffness: 380, damping: 30 }}
+                          />
+                        )}
+                        <span
+                          className={`relative z-10 transition-colors duration-200 ${
+                            selected ? "text-white" : "text-leo-blue hover:text-leo-blue/70"
+                          }`}
+                        >
+                          {year}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Grid: 2 rows first, then "Show more" */}
+              <ul className="relative grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+                <AnimatePresence mode="popLayout">
+                  {visibleItems.map((item, i) => {
+                    const itemId = item._id ?? item.id;
+                    return (
+                      <motion.li
+                        key={`${activeYear}-${itemId ?? item.title}`}
+                        layout
+                        initial={{ opacity: 0, y: 24, scale: 0.97 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0, scale: 0.96 }}
+                        transition={{ duration: 0.45, ease: EASE, delay: Math.min(i % step, 6) * 0.05 }}
+                      >
+                        <PastWorkCard item={item} href={itemId ? `/our-work/${itemId}` : "#"} />
+                      </motion.li>
+                    );
+                  })}
+                </AnimatePresence>
+              </ul>
+
+              {(remaining > 0 || canCollapse) && (
+                <div className="mt-12 flex flex-col items-center gap-3">
+                  <motion.button
+                    type="button"
+                    onClick={remaining > 0 ? showMore : showLess}
+                    whileHover={{ scale: 1.04 }}
+                    whileTap={{ scale: 0.97 }}
+                    transition={{ type: "spring", stiffness: 400, damping: 20 }}
+                    aria-expanded={remaining === 0}
+                    className="group inline-flex items-center gap-2 rounded-full border border-leo-blue/20 bg-white px-7 py-3 text-sm font-semibold text-leo-blue shadow-sm transition-all duration-300 hover:border-leo-blue hover:bg-leo-blue hover:text-white hover:shadow-lg hover:shadow-leo-blue/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-leo-blue/50"
+                  >
+                    {remaining > 0 ? "Show more work" : "Show less"}
+                    <svg
+                      className={`h-4 w-4 transition-transform duration-300 ${
+                        remaining > 0 ? "group-hover:translate-y-0.5" : "rotate-180 group-hover:-translate-y-0.5"
+                      }`}
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth={2.2}
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      aria-hidden
+                    >
+                      <path d="M6 9l6 6 6-6" />
+                    </svg>
+                  </motion.button>
+
+                  <p className="text-xs tabular-nums text-leo-gray/60">
+                    Showing {Math.min(visibleCount, yearItems.length)} of {yearItems.length}
+                  </p>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </section>
     </MotionConfig>
   );
 }

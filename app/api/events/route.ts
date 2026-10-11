@@ -18,7 +18,7 @@ export async function POST(request: Request) {
     const body = await request.json()
     console.log("Received event data:", body)
     
-    const { title, date, location, type, description } = body
+    const { title, date, location, type, description, imageUrl } = body
 
     if (!title || !date || !location || !type) {
       console.error("Missing required fields:", { title, date, location, type })
@@ -51,6 +51,7 @@ export async function POST(request: Request) {
       status,
       type,
       description: description || "",
+      imageUrl: (imageUrl ?? "").trim(),
       createdAt: new Date(),
       updatedAt: new Date(),
     })

@@ -1,31 +1,39 @@
 "use client";
 
+import { useState } from "react";
 import Image from "next/image";
 import FadeIn from "@/components/FadeIn";
 
-type Member = { name: string; post: string; image?: string }; // image: "/team/sujan.jpg" (file in /public/team)
-type PastCommittee = { year: string; image?: string }; // image: "/past/2025-26.jpg"
+type Member = {
+  name: string;
+  role: string;
+  // Photo in /public/images/committee/ — committed to GitHub with the code
+  image: string;
+  priority: number;
+};
 
-const executiveBoard: Member[] = [
-  { name: "Leo Sujan Pokharel", post: "President" },
-  { name: "Leo Anubhav K.C.", post: "Vice-President" },
-  { name: "Leo Samita Gyawali", post: "Secretary" },
-  { name: "Leo Ashika Budhathoki", post: "Treasurer" },
-  { name: "Leo Prince Parajuli", post: "Membership Chair" },
-];
-
+// Static committee list — edit names, roles and photo paths here.
+// Cards render in priority order. If a photo file is missing, the
+// card falls back to a Leo Blue to Gold gradient with a user icon.
 const committeeMembers: Member[] = [
-  { name: "Leo Abishek Parajuli", post: "Joint Secretary" },
-  { name: "Leo Sailesh Acharya", post: "Joint Treasurer" },
-  { name: "Leo Aashish B.K.", post: "Event Manager" },
-  { name: "Leo Riju Maharjan", post: "Event Manager" },
-  { name: "Leo Aashu Gurung", post: "Event Manager" },
-  { name: "Leo Yunesh Shrestha", post: "Outreach Manager" },
-  { name: "Leo Ambika Shrestha", post: "Outreach Manager" },
-  { name: "Leo Nischhal Shrestha", post: "Technical Lead" },
-  { name: "Leo Hemraj Timilsaina", post: "Content Creator" },
-  { name: "Leo Rohit Rai", post: "Content Creator" },
+  { name: "Leo Sujan Pokharel", role: "President", image: "/images/committee/sujan-pokharel.png", priority: 1 },
+  { name: "Leo Anubhav K.C.", role: "Vice-President", image: "/images/committee/anubhav-kc.png", priority: 2 },
+  { name: "Leo Samita Gyawali", role: "Secretary", image: "/images/committee/samita-gyawali.png", priority: 3 },
+  { name: "Leo Ashika Budhathoki", role: "Treasurer", image: "/images/committee/ashika-budhathoki.png", priority: 4 },
+  { name: "Leo Prince Parajuli", role: "Membership Chair", image: "/images/committee/prince-parajuli.png", priority: 5 },
+  { name: "Leo Abishek Parajuli", role: "Joint Secretary", image: "/images/committee/abishek-parajuli.png", priority: 6 },
+  { name: "Leo Sailesh Acharya", role: "Joint Treasurer", image: "/images/committee/sailesh-acharya.png", priority: 7 },
+  { name: "Leo Aashish B.K.", role: "Event Manager", image: "/images/committee/aashish-bk.png", priority: 8 },
+  { name: "Leo Riju Maharjan", role: "Event Manager", image: "/images/committee/riju-maharjan.png", priority: 9 },
+  { name: "Leo Aashu Gurung", role: "Event Manager", image: "/images/committee/aashu-gurung.png", priority: 10 },
+  { name: "Leo Yunesh Shrestha", role: "Outreach Manager", image: "/images/committee/yunesh-shrestha.png", priority: 11 },
+  { name: "Leo Ambika Shrestha", role: "Outreach Manager", image: "/images/committee/ambika-shrestha.png", priority: 12 },
+  { name: "Leo Nischhal Shrestha", role: "Technical Lead", image: "/images/committee/nischhal-shrestha.png", priority: 13 },
+  { name: "Leo Hemraj Timilsaina", role: "Content Creator", image: "/images/committee/hemraj-timilsaina.png", priority: 14 },
+  { name: "Leo Rohit Rai", role: "Content Creator", image: "/images/committee/rohit-rai.png", priority: 15 },
 ];
+
+type PastCommittee = { year: string; image?: string };
 
 // Add as many as you want — the grid adjusts automatically.
 const pastCommittees: PastCommittee[] = [
@@ -40,16 +48,9 @@ const pastCommittees: PastCommittee[] = [
 // Logo shown faintly in each card's banner. Put the file in /public.
 const BANNER_LOGO = "/logo.png";
 
-const getInitials = (name: string) =>
-  name
-    .replace(/^Leo\s+/i, "")
-    .split(" ")
-    .map((n) => n[0])
-    .slice(0, 2)
-    .join("")
-    .toUpperCase();
-
 function MemberCard({ member, index }: { member: Member; index: number }) {
+  const [imageFailed, setImageFailed] = useState(false);
+
   return (
     <FadeIn delay={(index % 5) * 80}>
       <div className="group h-full overflow-hidden rounded-3xl border border-leo-gray/10 bg-white shadow-sm transition-all duration-300 hover:-translate-y-1.5 hover:shadow-2xl">
@@ -63,13 +64,31 @@ function MemberCard({ member, index }: { member: Member; index: number }) {
           />
         </div>
 
-        {/* avatar overlapping banner */}
+        {/* avatar overlapping banner — gradient shows until a photo loads */}
         <div className="-mt-14 flex justify-center">
-          <div className="relative h-28 w-28 overflow-hidden rounded-full border-4 border-white bg-gradient-to-br from-leo-yellow to-leo-yellow/70 shadow-lg flex items-center justify-center">
-            {member.image ? (
-              <Image src={member.image} alt={member.name} fill className="object-cover" />
+          <div className="relative h-28 w-28 overflow-hidden rounded-full border-4 border-white bg-gradient-to-br from-leo-blue to-leo-yellow shadow-lg flex items-center justify-center">
+            {imageFailed ? (
+              <svg
+                className="h-12 w-12 text-white/80"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={1.5}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden
+              >
+                <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" />
+                <circle cx="12" cy="7" r="4" />
+              </svg>
             ) : (
-              <span className="text-3xl font-bold text-leo-blue">{getInitials(member.name)}</span>
+              <Image
+                src={member.image}
+                alt={member.name}
+                fill
+                className="object-cover"
+                onError={() => setImageFailed(true)}
+              />
             )}
           </div>
         </div>
@@ -77,7 +96,7 @@ function MemberCard({ member, index }: { member: Member; index: number }) {
         <div className="px-4 pb-6 pt-4 text-center">
           <h3 className="text-lg font-bold leading-tight text-leo-blue">{member.name}</h3>
           <span className="mt-3 inline-block rounded-full bg-leo-yellow/20 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-leo-blue">
-            {member.post}
+            {member.role}
           </span>
         </div>
       </div>
@@ -98,6 +117,11 @@ function SectionHeading({ title, subtitle }: { title: string; subtitle: string }
 }
 
 export default function CommitteePage() {
+  // Members always render in priority order
+  const sortedMembers = [...committeeMembers].sort(
+    (a, b) => a.priority - b.priority
+  );
+
   return (
     <>
       <FadeIn>
@@ -117,27 +141,16 @@ export default function CommitteePage() {
 
       <section className="bg-white py-16 sm:py-20">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <SectionHeading title="Executive Board" subtitle="The core leadership team steering the club this year." />
+          <SectionHeading title="Committee Members" subtitle="The team steering the club this year, listed by priority." />
           <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
-            {executiveBoard.map((m, i) => (
-              <MemberCard key={m.name} member={m} index={i} />
+            {sortedMembers.map((member, i) => (
+              <MemberCard key={member.name} member={member} index={i} />
             ))}
           </div>
         </div>
       </section>
 
       <section className="bg-leo-gray/5 py-16 sm:py-20">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <SectionHeading title="Committee Members" subtitle="The members driving our projects and initiatives." />
-          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
-            {committeeMembers.map((m, i) => (
-              <MemberCard key={m.name} member={m} index={i} />
-            ))}
-          </div>
-        </div>
-      </section>
-
-      <section className="bg-white py-16 sm:py-20">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <SectionHeading title="Past Committees" subtitle="The teams who built the club before us." />
           <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
