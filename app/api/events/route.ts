@@ -18,10 +18,10 @@ export async function POST(request: Request) {
     const body = await request.json()
     console.log("Received event data:", body)
     
-    const { title, date, location, status, type, description } = body
+    const { title, date, location, type, description } = body
 
-    if (!title || !date || !location || !status || !type) {
-      console.error("Missing required fields:", { title, date, location, status, type })
+    if (!title || !date || !location || !type) {
+      console.error("Missing required fields:", { title, date, location, type })
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 })
     }
 
@@ -39,6 +39,11 @@ export async function POST(request: Request) {
 
     const client = await clientPromise
     const db = client.db("kvlc_database")
+    // Work out the status from the date; ignore anything the browser sent
+    const today = new Date().toISOString().split("T")[0]
+    const eventDay = eventDate.toISOString().split("T")[0]
+    const status = eventDay < today ? "past" : "upcoming"
+
     const result = await db.collection("events").insertOne({
       title,
       date: eventDate,

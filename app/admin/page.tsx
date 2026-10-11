@@ -5,7 +5,21 @@ import { useSession } from "next-auth/react";
 import FadeIn from "@/components/FadeIn";
 
 const eventTypes = ["Service", "Meeting", "Workshop", "Social", "Fundraiser", "Other"];
-const eventStatuses = ["upcoming", "past"];
+
+// Event status is always worked out from the date, never picked by hand
+const eventStatusFromDate = (date: string) => {
+  const iso = date ? date.split("T")[0] : "";
+  const today = new Date().toISOString().split("T")[0];
+  if (iso && iso < today) return "past";
+  if (iso === today) return "today";
+  return "upcoming";
+};
+
+const statusStyles: Record<string, string> = {
+  past: "bg-leo-gray/10 text-leo-gray",
+  today: "bg-leo-yellow/10 text-leo-yellow",
+  upcoming: "bg-leo-green/10 text-leo-green",
+};
 
 type Event = {
   _id?: string;
@@ -23,7 +37,6 @@ type FormState = {
   date: string;
   location: string;
   type: string;
-  status: string;
   description: string;
 };
 
@@ -32,7 +45,6 @@ const emptyForm: FormState = {
   date: "",
   location: "",
   type: eventTypes[0],
-  status: "upcoming",
   description: "",
 };
 
@@ -58,6 +70,12 @@ type LiteratureItem = {
 };
 
 const pastWorkYears = ["2026/27", "2025/26"];
+
+type AdminUser = {
+  name?: string;
+  email: string;
+  role: string;
+};
 
 type PastWorkItem = {
   _id?: string;
@@ -133,6 +151,8 @@ export default function AdminPage() {
     null
   );
   const [pastWorkSubmitting, setPastWorkSubmitting] = useState(false);
+  const [admins, setAdmins] = useState<AdminUser[]>([]);
+  const [adminsLoading, setAdminsLoading] = useState(true);
   const [impact, setImpact] = useState<ImpactForm>({
     peopleHelped: "0",
     eventsHeld: "0",
@@ -217,6 +237,24 @@ export default function AdminPage() {
     fetchPastWork();
   }, [fetchPastWork]);
 
+  // Load the current admins for the Manage Admins tab
+  const fetchAdmins = useCallback(async () => {
+    try {
+      const res = await fetch("/api/admins");
+      if (!res.ok) throw new Error("Failed to fetch admins");
+      const data = await res.json();
+      setAdmins(Array.isArray(data.admins) ? data.admins : []);
+    } catch {
+      setMessage({ text: "Could not load admins.", kind: "error" });
+    } finally {
+      setAdminsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchAdmins();
+  }, [fetchAdmins]);
+
   const handleAddEvent = async (e: FormEvent) => {
     e.preventDefault();
     setSubmitting(true);
@@ -258,7 +296,6 @@ export default function AdminPage() {
       date: event.date ? event.date.split("T")[0] : "",
       location: event.location,
       type: event.type,
-      status: event.status,
       description: event.description,
     });
     setEditingId(event._id || event.id || null);
@@ -375,6 +412,33 @@ export default function AdminPage() {
       });
     } finally {
       setPromoting(false);
+    }
+  };
+
+  const handleRemoveAdmin = async (email: string) => {
+    if (
+      !window.confirm(
+        `Remove admin access from ${email}? They will become a regular user.`
+      )
+    )
+      return;
+    setMessage(null);
+    try {
+      const res = await fetch("/api/admins", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, role: "user" }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Failed to remove admin");
+      setMessage({ text: "Admin access removed.", kind: "success" });
+      await fetchAdmins();
+    } catch (error) {
+      setMessage({
+        text:
+          error instanceof Error ? error.message : "Could not remove admin.",
+        kind: "error",
+      });
     }
   };
 
@@ -591,26 +655,6 @@ export default function AdminPage() {
                       ))}
                     </select>
                   </div>
-                  <div>
-                    <label
-                      htmlFor="event-status"
-                      className="mb-1 block text-sm font-medium text-leo-gray"
-                    >
-                      Status
-                    </label>
-                    <select
-                      id="event-status"
-                      value={form.status}
-                      onChange={(e) => setForm({ ...form, status: e.target.value })}
-                      className="w-full rounded-md border border-leo-gray/30 px-3 py-2 text-gray-900 focus:border-leo-blue focus:outline-none focus:ring-1 focus:ring-leo-blue"
-                    >
-                      {eventStatuses.map((s) => (
-                        <option key={s} value={s}>
-                          {s.charAt(0).toUpperCase() + s.slice(1)}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
                   <div className="sm:col-span-2">
                     <label
                       htmlFor="event-description"
@@ -680,6 +724,7 @@ export default function AdminPage() {
                       <tbody>
                         {events.map((event) => {
                           const id = event._id || event.id || "";
+                          const status = eventStatusFromDate(event.date);
                           return (
                             <tr
                               key={id}
@@ -699,13 +744,9 @@ export default function AdminPage() {
                               </td>
                               <td className="px-3 py-2">
                                 <span
-                                  className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-                                    event.status === "upcoming"
-                                      ? "bg-leo-green/10 text-leo-green"
-                                      : "bg-leo-gray/10 text-leo-gray"
-                                  }`}
+                                  className={`rounded-full px-2 py-0.5 text-xs font-medium ${statusStyles[status]}`}
                                 >
-                                  {event.status}
+                                  {status.charAt(0).toUpperCase() + status.slice(1)}
                                 </span>
                               </td>
                               <td className="px-3 py-2">
@@ -979,37 +1020,101 @@ export default function AdminPage() {
             </FadeIn>
           </>
         ) : activeTab === "admins" ? (
-          <FadeIn>
-            <section className="rounded-lg bg-white p-6 shadow">
-              <h2 className="mb-4 text-xl font-semibold text-leo-blue">
-                Promote a User to Admin
-              </h2>
-              <p className="mb-4 text-sm text-leo-gray">
-                Enter the Google email of a registered user. They will gain full
-                admin access.
-              </p>
-              <form
-                onSubmit={handlePromoteAdmin}
-                className="flex flex-col gap-3 sm:flex-row sm:items-start"
-              >
-                <input
-                  type="email"
-                  required
-                  value={adminEmail}
-                  onChange={(e) => setAdminEmail(e.target.value)}
-                  placeholder="user@example.com"
-                  className="w-full rounded-md border border-leo-gray/30 px-3 py-2 text-gray-900 focus:border-leo-blue focus:outline-none focus:ring-1 focus:ring-leo-blue sm:max-w-xs"
-                />
-                <button
-                  type="submit"
-                  disabled={promoting || !adminEmail.trim()}
-                  className="rounded-md bg-leo-yellow px-5 py-2 font-medium text-leo-gray hover:bg-leo-yellow/90 disabled:opacity-50"
+          <>
+            <FadeIn>
+              <section className="rounded-lg bg-white p-6 shadow">
+                <h2 className="mb-4 text-xl font-semibold text-leo-blue">
+                  Promote a User to Admin
+                </h2>
+                <p className="mb-4 text-sm text-leo-gray">
+                  Enter the Google email of a registered user. They will gain full
+                  admin access.
+                </p>
+                <form
+                  onSubmit={handlePromoteAdmin}
+                  className="flex flex-col gap-3 sm:flex-row sm:items-start"
                 >
-                  Promote to Admin
-                </button>
-              </form>
-            </section>
-          </FadeIn>
+                  <input
+                    type="email"
+                    required
+                    value={adminEmail}
+                    onChange={(e) => setAdminEmail(e.target.value)}
+                    placeholder="user@example.com"
+                    className="w-full rounded-md border border-leo-gray/30 px-3 py-2 text-gray-900 focus:border-leo-blue focus:outline-none focus:ring-1 focus:ring-leo-blue sm:max-w-xs"
+                  />
+                  <button
+                    type="submit"
+                    disabled={promoting || !adminEmail.trim()}
+                    className="rounded-md bg-leo-yellow px-5 py-2 font-medium text-leo-gray hover:bg-leo-yellow/90 disabled:opacity-50"
+                  >
+                    Promote to Admin
+                  </button>
+                </form>
+              </section>
+            </FadeIn>
+
+            <FadeIn delay={150}>
+              <section className="mt-8 rounded-lg bg-white p-6 shadow">
+                <h2 className="mb-4 text-xl font-semibold text-leo-blue">
+                  Current Admins
+                </h2>
+                {adminsLoading ? (
+                  <p className="text-leo-gray">Loading admins…</p>
+                ) : admins.length === 0 ? (
+                  <p className="text-leo-gray">No admins found.</p>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full text-left text-sm">
+                      <thead>
+                        <tr className="border-b border-leo-gray/20 text-leo-gray">
+                          <th className="px-3 py-2 font-medium">Name</th>
+                          <th className="px-3 py-2 font-medium">Email</th>
+                          <th className="px-3 py-2 font-medium">Role</th>
+                          <th className="px-3 py-2 font-medium">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {admins.map((admin) => (
+                          <tr
+                            key={admin.email}
+                            className="border-b border-leo-gray/10 last:border-0"
+                          >
+                            <td className="px-3 py-2 font-medium text-gray-900">
+                              {admin.name || "—"}
+                            </td>
+                            <td className="px-3 py-2 text-leo-gray">
+                              {admin.email}
+                            </td>
+                            <td className="px-3 py-2">
+                              <span
+                                className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                                  admin.role === "superadmin"
+                                    ? "bg-leo-yellow/10 text-leo-yellow"
+                                    : "bg-leo-blue/10 text-leo-blue"
+                                }`}
+                              >
+                                {admin.role}
+                              </span>
+                            </td>
+                            <td className="px-3 py-2">
+                              {admin.role !== "superadmin" && (
+                                <button
+                                  onClick={() => handleRemoveAdmin(admin.email)}
+                                  className="rounded-md bg-red-50 px-3 py-1 font-medium text-red-600 hover:bg-red-100"
+                                >
+                                  Remove Admin
+                                </button>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </section>
+            </FadeIn>
+          </>
         ) : (
           <FadeIn>
             <section className="rounded-lg bg-white p-6 shadow">
