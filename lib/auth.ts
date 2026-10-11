@@ -11,20 +11,35 @@ export const authOptions: NextAuthOptions = {
   ],
   secret: process.env.NEXTAUTH_SECRET,
   callbacks: {
+    // Keep the token's role in sync with the database so the JWT itself
+    // never holds a stale role.
     async jwt({ token }) {
       if (token.email) {
         const client = await clientPromise;
         const db = client.db("kvlc_database");
-        const user = await db.collection("users").findOne({ email: token.email });
-        if (user) {
-          token.role = user.role;
+        const dbUser = await db
+          .collection("users")
+          .findOne({ email: token.email });
+        if (dbUser) {
+          token.role = dbUser.role;
         }
       }
       return token;
     },
+    // Fetch the latest role from the database on every session check, so a
+    // promotion takes effect immediately even if the cached token is old.
     async session({ session, token }) {
-      if (session.user) {
-        session.user.role = token.role;
+      if (session.user?.email) {
+        const client = await clientPromise;
+        const db = client.db("kvlc_database");
+        const dbUser = await db
+          .collection("users")
+          .findOne({ email: session.user.email });
+        if (dbUser) {
+          session.user.role = dbUser.role;
+        } else {
+          session.user.role = token.role;
+        }
       }
       return session;
     },
@@ -34,16 +49,22 @@ export const authOptions: NextAuthOptions = {
       if (user?.email) {
         const client = await clientPromise;
         const db = client.db("kvlc_database");
-        const role = user.email === process.env.SUPER_ADMIN_EMAIL ? "superadmin" : "user";
+        // An existing role (for example "admin" after a promotion) must
+        // survive a re-login. Only brand-new users default to "user".
+        const existing = await db.collection("users").findOne({ email: user.email });
+        const role =
+          user.email === process.env.SUPER_ADMIN_EMAIL
+            ? "superadmin"
+            : existing?.role ?? "user";
         await db.collection("users").updateOne(
           { email: user.email },
-          { 
-            $set: { 
-              name: user.name, 
-              image: user.image, 
+          {
+            $set: {
+              name: user.name,
+              image: user.image,
               role: role,
-              lastLogin: new Date() 
-            } 
+              lastLogin: new Date(),
+            },
           },
           { upsert: true }
         );
