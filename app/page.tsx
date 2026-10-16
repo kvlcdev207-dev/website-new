@@ -541,61 +541,85 @@ export default function HomePage() {
       <style>{PAGE_CSS}</style>
 
       {/* Hero Section */}
-      <section className="relative isolate overflow-hidden bg-gradient-to-br from-leo-blue via-leo-blue to-leo-blue/80 text-white">
-        {/* Decorative background */}
-        <div aria-hidden className="leo-float pointer-events-none absolute -right-24 -top-24 -z-10 h-96 w-96 rounded-full bg-leo-yellow/25 blur-3xl" />
-        <div aria-hidden className="leo-float-slow pointer-events-none absolute -bottom-32 -left-24 -z-10 h-96 w-96 rounded-full bg-leo-green/20 blur-3xl" />
-        <div
+      <section className="relative isolate flex min-h-[600px] w-full items-center overflow-hidden text-white sm:min-h-[680px] lg:min-h-[80vh]">
+        {/* Lion photo. Pinned right on small screens so the animal stays in frame. */}
+        <img
+          src="/images/lion-hero.png"
+          alt=""
           aria-hidden
-          className="pointer-events-none absolute inset-0 -z-10 opacity-40 [background-image:radial-gradient(rgba(255,255,255,0.35)_1px,transparent_1px)] [background-size:26px_26px] [mask-image:radial-gradient(ellipse_at_center,black,transparent_70%)] [-webkit-mask-image:radial-gradient(ellipse_at_center,black,transparent_70%)]"
+          className="absolute inset-0 h-full w-full object-cover object-[72%_center] md:object-center"
         />
 
-        <div className="mx-auto max-w-6xl px-4 py-20 text-center md:py-32">
-          <FadeIn>
-            <p className="inline-flex items-center gap-2 rounded-full bg-white/10 px-4 py-1.5 text-xs font-semibold uppercase tracking-widest text-leo-yellow ring-1 ring-white/20 backdrop-blur-sm">
-              <span className="h-1.5 w-1.5 rounded-full bg-leo-yellow" />
-              Kathmandu Valley Leo Club
-            </p>
-          </FadeIn>
-          <FadeIn delay={100}>
-            <h1 className="mx-auto mt-6 max-w-4xl text-4xl font-bold leading-tight md:text-6xl">
-              Students of the campus, <span className="text-leo-yellow">serving our community.</span>
-            </h1>
-          </FadeIn>
-          <FadeIn delay={200}>
-            <p className="mx-auto mt-6 max-w-2xl text-lg text-white/90 md:text-xl">
-              A student-run club where young people lead, serve, and grow.
-            </p>
-          </FadeIn>
-          <FadeIn delay={300}>
-            <div className="mt-9 flex flex-wrap items-center justify-center gap-4">
-              <Link
-                href="/our-work"
-                className="inline-flex items-center rounded-lg bg-leo-yellow px-7 py-3.5 font-semibold text-leo-blue transition-all duration-300 hover:scale-105 hover:bg-yellow-300 hover:shadow-xl hover:shadow-leo-yellow/30 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/60"
-              >
-                Explore our work
-              </Link>
-              <Link
-                href="/literature"
-                className="inline-flex items-center rounded-lg border border-white/30 bg-white/5 px-7 py-3.5 font-semibold text-white backdrop-blur-sm transition-all duration-300 hover:bg-white/15 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/60"
-              >
-                Read our literature
-              </Link>
-            </div>
-          </FadeIn>
-          <FadeIn delay={400}>
-            <ul className="mt-12 flex flex-wrap items-center justify-center gap-3">
-              {LEO_VALUES.map((value) => (
-                <li
-                  key={value}
-                  className="flex items-center gap-2 rounded-full bg-white/10 px-4 py-2 text-sm font-medium ring-1 ring-white/20 backdrop-blur-sm"
+        {/*
+          Readability overlay. It is strong on the LEFT (where the text sits) and fades almost
+          to nothing on the RIGHT, so the lion keeps its natural colours instead of being
+          washed in blue. On phones the text spans the whole width, so it is an even top-to-bottom wash.
+        */}
+        <div
+          aria-hidden
+          className="absolute inset-0 bg-gradient-to-b from-leo-blue/85 via-leo-blue/60 to-leo-blue/85 md:bg-gradient-to-r md:from-leo-blue/90 md:via-leo-blue/45 md:to-leo-blue/0"
+        />
+        {/* Soft bottom vignette adds depth */}
+        <div aria-hidden className="absolute inset-x-0 bottom-0 h-40 bg-gradient-to-t from-black/25 to-transparent" />
+
+        {/* Decorative glows: warm gold behind the lion, a hint of green bottom-left */}
+        <div aria-hidden className="leo-float-slow pointer-events-none absolute -right-24 top-1/4 hidden h-[28rem] w-[28rem] rounded-full bg-leo-yellow/15 blur-3xl md:block" />
+        <div aria-hidden className="leo-float pointer-events-none absolute -bottom-32 -left-24 h-96 w-96 rounded-full bg-leo-green/15 blur-3xl" />
+
+        {/* Dotted texture, only behind the text side */}
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0 opacity-25 [background-image:radial-gradient(rgba(255,255,255,0.5)_1px,transparent_1px)] [background-size:26px_26px] [mask-image:linear-gradient(to_right,black,transparent_55%)] [-webkit-mask-image:linear-gradient(to_right,black,transparent_55%)]"
+        />
+
+        {/* Text, left-aligned with the navbar logo */}
+        <div className="relative z-10 mx-auto w-full max-w-7xl px-4 py-20 sm:px-6 md:py-28 lg:px-8">
+          <div className="max-w-xl text-left lg:max-w-2xl">
+            <FadeIn>
+              <p className="inline-flex items-center gap-2 rounded-full bg-white/10 px-4 py-1.5 text-xs font-semibold uppercase tracking-widest text-leo-yellow ring-1 ring-white/25 backdrop-blur-sm">
+                <span className="h-1.5 w-1.5 rounded-full bg-leo-yellow" />
+                Kathmandu Valley Leo Club
+              </p>
+            </FadeIn>
+            <FadeIn delay={100}>
+              <h1 className="mt-6 text-balance text-4xl font-bold leading-[1.1] tracking-tight [text-shadow:0_2px_30px_rgba(0,0,0,0.25)] sm:text-5xl">
+                Students of the campus,
+                <span className="mt-1 block text-leo-yellow">serving our community.</span>
+              </h1>
+            </FadeIn>
+            <FadeIn delay={200}>
+              <p className="mt-6 max-w-lg text-lg text-white/90 md:text-xl">
+                A student-run club where young people lead, serve, and grow.
+              </p>
+            </FadeIn>
+            <FadeIn delay={300}>
+              <div className="mt-9 flex flex-wrap items-center gap-4">
+                <Link
+                  href="/our-work"
+                  className="inline-flex items-center rounded-lg bg-leo-yellow px-7 py-3.5 font-semibold text-leo-blue transition-all duration-300 hover:scale-105 hover:bg-yellow-300 hover:shadow-xl hover:shadow-leo-yellow/30 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/60"
                 >
-                  <span className="h-1.5 w-1.5 rounded-full bg-leo-yellow" />
-                  {value}
-                </li>
-              ))}
-            </ul>
-          </FadeIn>
+                  Explore our work
+                </Link>
+                <Link
+                  href="/literature"
+                  className="inline-flex items-center rounded-lg border border-white/40 bg-white/10 px-7 py-3.5 font-semibold text-white backdrop-blur-sm transition-all duration-300 hover:bg-white/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/60"
+                >
+                  Read our literature
+                </Link>
+              </div>
+            </FadeIn>
+            <FadeIn delay={400}>
+              {/* A quiet one-line list instead of four chips, so the lion stays the focus */}
+              <ul className="mt-12 flex flex-wrap items-center gap-x-6 gap-y-2 border-t border-white/20 pt-6 text-sm font-medium tracking-wide text-white/85">
+                {LEO_VALUES.map((value) => (
+                  <li key={value} className="flex items-center gap-2">
+                    <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-leo-yellow" />
+                    {value}
+                  </li>
+                ))}
+              </ul>
+            </FadeIn>
+          </div>
         </div>
       </section>
 
