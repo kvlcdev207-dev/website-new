@@ -574,26 +574,30 @@ export default function HomePage() {
 
         {/* Text, left-aligned with the navbar logo */}
         <div className="relative z-10 mx-auto w-full max-w-7xl px-4 py-20 sm:px-6 md:py-28 lg:px-8">
-          <div className="max-w-xl text-left lg:max-w-2xl">
+          <div className="mx-auto max-w-xl text-center md:mx-0 md:text-left lg:max-w-2xl">
             <FadeIn>
-              <p className="inline-flex items-center gap-2 rounded-full bg-white/10 px-4 py-1.5 text-xs font-semibold uppercase tracking-widest text-leo-yellow ring-1 ring-white/25 backdrop-blur-sm">
-                <span className="h-1.5 w-1.5 rounded-full bg-leo-yellow" />
+              {/* The club name: bold, gold and glowing so it reads as the brand, not a footnote */}
+              <p className="inline-flex items-center gap-3 rounded-full bg-leo-yellow/15 px-5 py-2.5 text-xs font-bold uppercase tracking-[0.16em] text-leo-yellow shadow-lg shadow-black/10 ring-1 ring-leo-yellow/50 backdrop-blur-sm sm:text-sm sm:tracking-[0.2em] md:text-base">
+                <span className="relative flex h-2.5 w-2.5" aria-hidden>
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-leo-yellow opacity-70 motion-reduce:animate-none" />
+                  <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-leo-yellow" />
+                </span>
                 Kathmandu Valley Leo Club
               </p>
             </FadeIn>
             <FadeIn delay={100}>
-              <h1 className="mt-6 text-balance text-4xl font-bold leading-[1.1] tracking-tight [text-shadow:0_2px_30px_rgba(0,0,0,0.25)] sm:text-5xl">
+              <h1 className="mt-7 text-balance text-4xl font-bold leading-[1.1] tracking-tight [text-shadow:0_2px_30px_rgba(0,0,0,0.25)] sm:text-5xl">
                 Students of the campus,
                 <span className="mt-1 block text-leo-yellow">serving our community.</span>
               </h1>
             </FadeIn>
             <FadeIn delay={200}>
-              <p className="mt-6 max-w-lg text-lg text-white/90 md:text-xl">
+              <p className="mx-auto mt-6 max-w-lg text-lg text-white/90 md:mx-0 md:text-xl">
                 A student-run club where young people lead, serve, and grow.
               </p>
             </FadeIn>
             <FadeIn delay={300}>
-              <div className="mt-9 flex flex-wrap items-center gap-4">
+              <div className="mt-9 flex flex-wrap items-center justify-center gap-4 md:justify-start">
                 <Link
                   href="/our-work"
                   className="inline-flex items-center rounded-lg bg-leo-yellow px-7 py-3.5 font-semibold text-leo-blue transition-all duration-300 hover:scale-105 hover:bg-yellow-300 hover:shadow-xl hover:shadow-leo-yellow/30 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/60"
@@ -610,7 +614,7 @@ export default function HomePage() {
             </FadeIn>
             <FadeIn delay={400}>
               {/* A quiet one-line list instead of four chips, so the lion stays the focus */}
-              <ul className="mt-12 flex flex-wrap items-center gap-x-6 gap-y-2 border-t border-white/20 pt-6 text-sm font-medium tracking-wide text-white/85">
+              <ul className="mt-12 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 border-t border-white/20 pt-6 md:justify-start text-sm font-medium tracking-wide text-white/85">
                 {LEO_VALUES.map((value) => (
                   <li key={value} className="flex items-center gap-2">
                     <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-leo-yellow" />
